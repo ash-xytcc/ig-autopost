@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "ig-autopost-api",
+  "name": "ig-autopost",
   "main": "src/index.ts",
   "compatibility_date": "2026-04-06",
   "workers_dev": true,
@@ -10,8 +10,8 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "ig_autopost",
-      "database_id": "REPLACE_ME"
+      "database_name": "ig-autopost",
+      "database_id": "a8ae1479-2819-45a9-b2c7-787e42259929"
     }
   ],
   "r2_buckets": [
