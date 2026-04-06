@@ -678,12 +678,14 @@ function getExtension(filename: string, mimeType: string): string {
 }
 
 function sessionCookie(value: string, env: Env): string {
-  const secure = env.APP_BASE_URL.startsWith('https://') ? '; Secure' : ''
+  const baseUrl = String(env.APP_BASE_URL || '')
+  const secure = baseUrl.startsWith('https://') ? '; Secure' : ''
   return `${SESSION_COOKIE}=${value}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}${secure}`
 }
 
 function expiredSessionCookie(env: Env): string {
-  const secure = env.APP_BASE_URL.startsWith('https://') ? '; Secure' : ''
+  const baseUrl = String(env.APP_BASE_URL || '')
+  const secure = baseUrl.startsWith('https://') ? '; Secure' : ''
   return `${SESSION_COOKIE}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0${secure}`
 }
 
