@@ -6,11 +6,326 @@
       "createdAt": 1775530888730,
       "pending": false,
       "connectedAt": 1775530922218
+    },
+    {
+      "id": "l18ido8psr",
+      "name": "MAY DAY",
+      "createdAt": 1775541503650,
+      "pending": false,
+      "connectedAt": 1775541538152
+    },
+    {
+      "id": "v70ipc9mx8",
+      "name": "CRMAN",
+      "createdAt": 1775541555100,
+      "pending": false,
+      "connectedAt": 1775541577636
+    },
+    {
+      "id": "hetfi679jw",
+      "name": "BFC",
+      "createdAt": 1775541587608,
+      "pending": false,
+      "connectedAt": 1775541617807
     }
   ],
   "posts": [],
   "targets": [],
   "logs": [
+    {
+      "id": "z6wlrjeiqi",
+      "ts": 1775541848318,
+      "level": "info",
+      "message": "Uploaded media",
+      "extra": {
+        "path": "uploads\\b33709834cba72d63593e5e387f80285",
+        "original": "12.png"
+      }
+    },
+    {
+      "id": "x4we3pt5od",
+      "ts": 1775541848296,
+      "level": "info",
+      "message": "Uploaded media",
+      "extra": {
+        "path": "uploads\\b50e41885869649c5414a3dc4ba5219d",
+        "original": "11.png"
+      }
+    },
+    {
+      "id": "ei263xcjhk",
+      "ts": 1775541848271,
+      "level": "info",
+      "message": "Uploaded media",
+      "extra": {
+        "path": "uploads\\75770562e6bc01d4551092ea3dc751c9",
+        "original": "10.png"
+      }
+    },
+    {
+      "id": "iqr6pcfboh",
+      "ts": 1775541848248,
+      "level": "info",
+      "message": "Uploaded media",
+      "extra": {
+        "path": "uploads\\ec4dfd88efadf26bb61bbc525d470d32",
+        "original": "9.png"
+      }
+    },
+    {
+      "id": "3yrf2v735g",
+      "ts": 1775541848225,
+      "level": "info",
+      "message": "Uploaded media",
+      "extra": {
+        "path": "uploads\\78d43610b2467b7ff29c6cb97053b1fb",
+        "original": "8.png"
+      }
+    },
+    {
+      "id": "dl3omlkwdt",
+      "ts": 1775541848199,
+      "level": "info",
+      "message": "Uploaded media",
+      "extra": {
+        "path": "uploads\\66b59f54ed2dfd8a36a202e0c35a5c84",
+        "original": "7.png"
+      }
+    },
+    {
+      "id": "hnl1if0zeq",
+      "ts": 1775541848176,
+      "level": "info",
+      "message": "Uploaded media",
+      "extra": {
+        "path": "uploads\\5e3d09ec92f162895490ec7c5248b81e",
+        "original": "6.png"
+      }
+    },
+    {
+      "id": "ex29932zeg",
+      "ts": 1775541848153,
+      "level": "info",
+      "message": "Uploaded media",
+      "extra": {
+        "path": "uploads\\17a6efad4a36574b15addef0306f7a20",
+        "original": "5.png"
+      }
+    },
+    {
+      "id": "cxqmu7zb6f",
+      "ts": 1775541848126,
+      "level": "info",
+      "message": "Uploaded media",
+      "extra": {
+        "path": "uploads\\1f4129bf717aa5e4948e71657f1ca083",
+        "original": "4.png"
+      }
+    },
+    {
+      "id": "4rx633jwng",
+      "ts": 1775541848100,
+      "level": "info",
+      "message": "Uploaded media",
+      "extra": {
+        "path": "uploads\\959de4c45a316a21c4c0fb74d408cf44",
+        "original": "3.png"
+      }
+    },
+    {
+      "id": "8xlmvmpa2q",
+      "ts": 1775541848061,
+      "level": "info",
+      "message": "Uploaded media",
+      "extra": {
+        "path": "uploads\\00b037471bd2d372b07b9691386ae9f2",
+        "original": "2.png"
+      }
+    },
+    {
+      "id": "yi534rq6pc",
+      "ts": 1775541848011,
+      "level": "info",
+      "message": "Uploaded media",
+      "extra": {
+        "path": "uploads\\bc4eeb9b78870ad3ab925ff5f142d2c2",
+        "original": "1.png"
+      }
+    },
+    {
+      "id": "5lvv8rt191",
+      "ts": 1775541839221,
+      "level": "info",
+      "message": "Uploaded media",
+      "extra": {
+        "path": "uploads\\2c014a725e07fe4f94992fa629d0546a",
+        "original": "12.png"
+      }
+    },
+    {
+      "id": "lkg2klwcox",
+      "ts": 1775541839185,
+      "level": "info",
+      "message": "Uploaded media",
+      "extra": {
+        "path": "uploads\\37aa629b938e11c8ed1a40e5bc9c1d6a",
+        "original": "11.png"
+      }
+    },
+    {
+      "id": "17fl7ldfny",
+      "ts": 1775541839140,
+      "level": "info",
+      "message": "Uploaded media",
+      "extra": {
+        "path": "uploads\\0f23271cae8341ad776c4625b227d8cd",
+        "original": "10.png"
+      }
+    },
+    {
+      "id": "iv6u7ofr5p",
+      "ts": 1775541839110,
+      "level": "info",
+      "message": "Uploaded media",
+      "extra": {
+        "path": "uploads\\d0e0216f38e7d284186b5cc85895458f",
+        "original": "9.png"
+      }
+    },
+    {
+      "id": "2e00xemcj7",
+      "ts": 1775541839069,
+      "level": "info",
+      "message": "Uploaded media",
+      "extra": {
+        "path": "uploads\\33173d0e76c0923d3550f1efad57541e",
+        "original": "8.png"
+      }
+    },
+    {
+      "id": "jj60k8prpe",
+      "ts": 1775541839018,
+      "level": "info",
+      "message": "Uploaded media",
+      "extra": {
+        "path": "uploads\\81e14a57b3d9843e5fcb01e42d377c49",
+        "original": "7.png"
+      }
+    },
+    {
+      "id": "jv73iwovpe",
+      "ts": 1775541838967,
+      "level": "info",
+      "message": "Uploaded media",
+      "extra": {
+        "path": "uploads\\e82d9bb25ac3cedb57582e3a6725dd08",
+        "original": "6.png"
+      }
+    },
+    {
+      "id": "lrk6vch1z9",
+      "ts": 1775541838917,
+      "level": "info",
+      "message": "Uploaded media",
+      "extra": {
+        "path": "uploads\\16bfafc2d512387c1f5bd19aad69f89e",
+        "original": "5.png"
+      }
+    },
+    {
+      "id": "l3pq48rq33",
+      "ts": 1775541838858,
+      "level": "info",
+      "message": "Uploaded media",
+      "extra": {
+        "path": "uploads\\baf0351bb49a82a763d1cf5c331310a5",
+        "original": "4.png"
+      }
+    },
+    {
+      "id": "lpchcschs5",
+      "ts": 1775541838725,
+      "level": "info",
+      "message": "Uploaded media",
+      "extra": {
+        "path": "uploads\\60bcc8fdcc7f59ff2d4f0a22c13e2e96",
+        "original": "3.png"
+      }
+    },
+    {
+      "id": "39jovrz9ob",
+      "ts": 1775541838677,
+      "level": "info",
+      "message": "Uploaded media",
+      "extra": {
+        "path": "uploads\\d08322773f5f2a560d3c424e77c61161",
+        "original": "2.png"
+      }
+    },
+    {
+      "id": "qghb0c8gxi",
+      "ts": 1775541838620,
+      "level": "info",
+      "message": "Uploaded media",
+      "extra": {
+        "path": "uploads\\322c7560dfea148d3ad4fa8867a84f82",
+        "original": "1.png"
+      }
+    },
+    {
+      "id": "w7wx643y0a",
+      "ts": 1775541617810,
+      "level": "info",
+      "message": "Instagram account connected",
+      "extra": {
+        "profileId": "hetfi679jw"
+      }
+    },
+    {
+      "id": "xg74h8jl2c",
+      "ts": 1775541589591,
+      "level": "info",
+      "message": "Opened login browser for new account",
+      "extra": {
+        "profileId": "hetfi679jw"
+      }
+    },
+    {
+      "id": "r8mbzlevsq",
+      "ts": 1775541577648,
+      "level": "info",
+      "message": "Instagram account connected",
+      "extra": {
+        "profileId": "v70ipc9mx8"
+      }
+    },
+    {
+      "id": "xa6s6aajsy",
+      "ts": 1775541557483,
+      "level": "info",
+      "message": "Opened login browser for new account",
+      "extra": {
+        "profileId": "v70ipc9mx8"
+      }
+    },
+    {
+      "id": "k5fdolmcep",
+      "ts": 1775541538182,
+      "level": "info",
+      "message": "Instagram account connected",
+      "extra": {
+        "profileId": "l18ido8psr"
+      }
+    },
+    {
+      "id": "m6jagv7wqb",
+      "ts": 1775541511739,
+      "level": "info",
+      "message": "Opened login browser for new account",
+      "extra": {
+        "profileId": "l18ido8psr"
+      }
+    },
     {
       "id": "8d3znp3617",
       "ts": 1775532540247,
