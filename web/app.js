@@ -18,6 +18,33 @@ const els = {
 
 let state = { profiles: [], posts: [], targets: [], logs: [] };
 let selectedImage = null;
+let lastApiFailure = "";
+
+async function apiFetch(url, options = {}) {
+  const res = await fetch(url, options);
+  const contentType = (res.headers.get("content-type") || "").toLowerCase();
+  const text = await res.text();
+
+  if (!contentType.includes("application/json")) {
+    const preview = text.startsWith("<!DOCTYPE") || text.startsWith("<html")
+      ? `Expected JSON from ${url}, but got HTML. The server may have failed or restarted badly.`
+      : `Expected JSON from ${url}, but got: ${text.slice(0, 180)}`;
+    throw new Error(preview);
+  }
+
+  let payload = {};
+  try {
+    payload = text ? JSON.parse(text) : {};
+  } catch (error) {
+    throw new Error(`Invalid JSON from ${url}: ${error.message}`);
+  }
+
+  if (!res.ok) {
+    throw new Error(payload.error || `Request failed (${res.status})`);
+  }
+
+  return payload;
+}
 
 function showToast(message, kind = "info") {
   els.toast.textContent = message;
@@ -172,24 +199,30 @@ function renderPreview() {
   }
 }
 
-async function refreshState() {
-  const res = await fetch("/api/state");
-  state = await res.json();
-  renderAccounts();
-  renderPosts();
-  renderLogs();
+async function refreshState(showErrors = false) {
+  try {
+    state = await apiFetch("/api/state");
+    lastApiFailure = "";
+    renderAccounts();
+    renderPosts();
+    renderLogs();
+  } catch (error) {
+    if (showErrors || lastApiFailure !== error.message) {
+      showToast(error.message || "Could not refresh app state.", "error");
+      lastApiFailure = error.message || "refresh-failed";
+    }
+    throw error;
+  }
 }
 
 async function addAccount() {
   els.addAccountBtn.disabled = true;
   try {
-    const res = await fetch("/api/profile/start", { method: "POST" });
-    const payload = await res.json();
-    if (!res.ok) {
-      showToast(payload.error || "Could not open Instagram login window.", "error");
-      return;
-    }
-    await refreshState();
+    await apiFetch("/api/profile/start", { method: "POST" });
+    showToast("Instagram login window opened. Finish logging in there.", "info");
+    await refreshState(true);
+  } catch (error) {
+    showToast(error.message || "Could not open Instagram login window.", "error");
   } finally {
     els.addAccountBtn.disabled = false;
   }
@@ -199,36 +232,41 @@ async function renameAccount(id) {
   const current = state.profiles.find(p => p.id === id);
   const name = prompt("Account name", current?.name || "");
   if (!name) return;
-  await fetch("/api/profile/rename", {
+
+  await apiFetch("/api/profile/rename", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ id, name })
   });
-  await refreshState();
+  await refreshState(true);
 }
 
 async function removeAccount(id) {
   if (!confirm("Remove this account from the app?")) return;
-  await fetch(`/api/profile/${id}`, { method: "DELETE" });
-  await refreshState();
+
+  await apiFetch(`/api/profile/${id}`, { method: "DELETE" });
+  await refreshState(true);
 }
 
 async function retryTarget(id) {
-  await fetch(`/api/target/${id}/retry`, { method: "POST" });
+
+  await apiFetch(`/api/target/${id}/retry`, { method: "POST" });
   showToast("Retry queued.", "success");
   await refreshState();
 }
 
 async function postNow(postId) {
   showToast("Posting now. Instagram may open and take over for a moment.", "info");
-  await fetch(`/api/post/${postId}/post-now`, { method: "POST" });
-  setTimeout(refreshState, 1000);
+
+  await apiFetch(`/api/post/${postId}/post-now`, { method: "POST" });
+  setTimeout(() => refreshState(true).catch(() => {}), 1000);
 }
 
 async function deletePost(postId) {
   if (!confirm("Delete this scheduled post?")) return;
-  await fetch(`/api/post/${postId}/delete`, { method: "POST" });
-  await refreshState();
+
+  await apiFetch(`/api/post/${postId}/delete`, { method: "POST" });
+  await refreshState(true);
 }
 
 async function schedulePost(event) {
@@ -248,8 +286,8 @@ async function schedulePost(event) {
   const fd = new FormData();
   fd.append("file", els.fileInput.files[0]);
 
-  const uploadRes = await fetch("/api/upload", { method: "POST", body: fd });
-  const upload = await uploadRes.json();
+
+  const upload = await apiFetch("/api/upload", { method: "POST", body: fd });
 
   const when = new Date(els.timeInput.value).getTime();
   if (!Number.isFinite(when)) {
@@ -257,7 +295,8 @@ async function schedulePost(event) {
     return;
   }
 
-  const res = await fetch("/api/post", {
+
+  await apiFetch("/api/post", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -268,12 +307,6 @@ async function schedulePost(event) {
       profileIds: selectedProfiles
     })
   });
-
-  const payload = await res.json();
-  if (!res.ok) {
-    showToast(payload.error || "Could not schedule post.", "error");
-    return;
-  }
 
   showToast("Post scheduled.", "success");
   els.postForm.reset();
@@ -312,5 +345,5 @@ document.body.addEventListener("click", async (event) => {
 
 els.timeInput.value = defaultDateTimeLocal();
 renderPreview();
-refreshState();
-setInterval(refreshState, 10000);
+refreshState(true).catch(() => {});
+setInterval(() => refreshState(false).catch(() => {}), 10000);

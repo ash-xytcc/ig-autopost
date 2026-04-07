@@ -61,6 +61,20 @@ function log(level, message, extra = {}) {
   console.log(`[${level}] ${message}`, extra);
 }
 
+function normalizeProfile(profile, index = 0) {
+  return {
+    ...profile,
+    name: String(profile?.name || `Account ${index + 1}`),
+    pending: !!profile?.pending,
+    connectedAt: profile?.connectedAt || null,
+  };
+}
+
+function sendApiError(res, status, error) {
+  const message = error && error.message ? error.message : String(error || 'Unknown error');
+  res.status(status).json({ error: message });
+}
+
 function findProfile(db, profileId) {
   return db.profiles.find(x => x.id === profileId);
 }
@@ -139,7 +153,10 @@ function watchProfileLogin(profileId, browser) {
 const upload = multer({ dest: "uploads/" });
 
 app.get("/api/state", (req, res) => {
-  res.json(loadDB());
+  const db = loadDB();
+  db.profiles = db.profiles.map((profile, index) => normalizeProfile(profile, index));
+  saveDB(db);
+  res.json(db);
 });
 
 app.post("/api/profile/start", async (req, res) => {
@@ -147,13 +164,13 @@ app.post("/api/profile/start", async (req, res) => {
   const profileId = id();
   const profilePath = path.join("profiles", profileId);
 
-  db.profiles.push({
+  db.profiles.push(normalizeProfile({
     id: profileId,
     name: `Account ${db.profiles.length + 1}`,
     createdAt: Date.now(),
     pending: true,
     connectedAt: null,
-  });
+  }, db.profiles.length));
   saveDB(db);
 
   try {
@@ -174,16 +191,17 @@ app.post("/api/profile/start", async (req, res) => {
       });
     });
 
-    const page = browser.pages()[0] || await browser.newPage();
+    const existingPages = browser.pages();
+    const page = existingPages.length ? existingPages[0] : await browser.newPage();
     await page.goto("https://www.instagram.com/", { waitUntil: "domcontentloaded", timeout: 60000 });
 
     watchProfileLogin(profileId, browser);
     log("info", "Opened login browser for new account", { profileId });
 
-    res.json({ ok: true, profileId });
+    res.json({ ok: true, profileId, pending: true });
   } catch (error) {
     await finalizeProfileSetup(profileId, { error: error.message || String(error) });
-    res.status(500).json({ error: "Could not open Instagram login window" });
+    sendApiError(res, 500, "Could not open Instagram login window");
   }
 });
 
@@ -505,6 +523,28 @@ async function schedulerTick() {
 setInterval(() => {
   schedulerTick().catch(err => log("error", "Scheduler tick crashed", { error: err.message || String(err) }));
 }, TICK_MS);
+
+app.use((err, req, res, next) => {
+  log("error", "Unhandled server error", {
+    path: req?.path,
+    method: req?.method,
+    error: err?.message || String(err),
+  });
+
+  if (req?.path && req.path.startsWith('/api/')) {
+    return sendApiError(res, 500, err || 'Server error');
+  }
+
+  next(err);
+});
+
+process.on('unhandledRejection', (error) => {
+  log('error', 'Unhandled promise rejection', { error: error?.message || String(error) });
+});
+
+process.on('uncaughtException', (error) => {
+  log('error', 'Uncaught exception', { error: error?.message || String(error) });
+});
 
 app.listen(3000, () => {
   log("info", "Server started", { url: "http://localhost:3000" });
