@@ -117,20 +117,6 @@ function normalizeProfile(profile, index = 0) {
   };
 }
 
-function normalizePost(post) {
-  const status = String(post?.status || "scheduled");
-  return {
-    ...post,
-    caption: String(post?.caption || ""),
-    imagePath: String(post?.imagePath || ""),
-    imageUrl: String(post?.imageUrl || (post?.imagePath ? `/${String(post.imagePath).replaceAll("\\", "/")}` : "")),
-    scheduledAt: Number(post?.scheduledAt || Date.now()),
-    status,
-    createdAt: Number(post?.createdAt || Date.now()),
-    lastRunAt: post?.lastRunAt || null,
-  };
-}
-
 function sendApiError(res, status, error) {
   const message = error && error.message ? error.message : String(error || "Unknown error");
   res.status(status).json({ error: message });
@@ -138,10 +124,6 @@ function sendApiError(res, status, error) {
 
 function findProfile(db, profileId) {
   return db.profiles.find(x => x.id === profileId);
-}
-
-function findPost(db, postId) {
-  return db.posts.find(x => x.id === postId);
 }
 
 function cleanupProfileSetup(profileId) {
@@ -234,7 +216,6 @@ app.get("/api/health", (req, res) => {
 app.get("/api/state", (req, res) => {
   const db = loadDB();
   db.profiles = db.profiles.map((profile, index) => normalizeProfile(profile, index));
-  db.posts = db.posts.map(post => normalizePost(post));
   saveDB(db);
   res.json(db);
 });
@@ -311,27 +292,31 @@ app.post("/api/upload", upload.single("file"), (req, res) => {
   res.json({ path: storedPath, url: `/uploads/${req.file.filename}` });
 });
 
-app.post("/api/post", (req, res) => {
-  const { caption, imagePath, imageUrl, scheduledAt, profileIds } = req.body || {};
-  if (!imagePath) return res.status(400).json({ error: "imagePath required" });
-  if (!Array.isArray(profileIds) || !profileIds.length) return res.status(400).json({ error: "Choose at least one account" });
-  const time = Number(scheduledAt);
-  if (!Number.isFinite(time)) return res.status(400).json({ error: "Invalid scheduledAt" });
 
-  const db = loadDB();
+
+function findPost(db, postId) {
+  return db.posts.find(p => p.id === postId);
+}
+
+function createPostRecord(db, row) {
+  const time = Number(row?.scheduledAt);
+  if (!row?.imagePath) throw new Error("imagePath required");
+  if (!Number.isFinite(time)) throw new Error("Invalid scheduledAt");
+  if (!Array.isArray(row?.profileIds) || !row.profileIds.length) throw new Error("Choose at least one account");
+
   const postId = id();
   db.posts.unshift({
     id: postId,
-    caption: String(caption || ""),
-    imagePath,
-    imageUrl: imageUrl || `/${String(imagePath).replaceAll("\\", "/")}`,
+    caption: String(row.caption || ""),
+    imagePath: row.imagePath,
+    imageUrl: row.imageUrl || `/${String(row.imagePath).replaceAll("\\", "/")}`,
     scheduledAt: time,
     status: "scheduled",
     createdAt: Date.now(),
     lastRunAt: null
   });
 
-  for (const profileId of profileIds) {
+  for (const profileId of row.profileIds) {
     db.targets.push({
       id: id(),
       postId,
@@ -343,9 +328,38 @@ app.post("/api/post", (req, res) => {
     });
   }
 
-  saveDB(db);
-  log("info", "Scheduled post", { postId, profileCount: profileIds.length });
-  res.json({ ok: true, postId });
+  return postId;
+}
+
+app.post("/api/post", (req, res) => {
+  try {
+    const db = loadDB();
+    const postId = createPostRecord(db, req.body || {});
+    saveDB(db);
+    log("info", "Scheduled post", { postId, profileCount: (req.body?.profileIds || []).length });
+    res.json({ ok: true, postId });
+  } catch (error) {
+    sendApiError(res, 400, error);
+  }
+});
+
+app.post("/api/posts/import", (req, res) => {
+  const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+  if (!rows.length) return res.status(400).json({ error: "No rows to import" });
+
+  try {
+    const db = loadDB();
+    const postIds = [];
+    for (const row of rows) {
+      const postId = createPostRecord(db, row);
+      postIds.push(postId);
+    }
+    saveDB(db);
+    log("info", "Imported scheduled posts", { count: postIds.length });
+    res.json({ ok: true, count: postIds.length, postIds });
+  } catch (error) {
+    sendApiError(res, 400, error);
+  }
 });
 
 app.post("/api/post/:id/post-now", async (req, res) => {
@@ -380,9 +394,7 @@ app.post("/api/post/:id/update", (req, res) => {
 
   post.caption = String(caption || "");
   post.scheduledAt = time;
-  if (post.status !== "done") {
-    post.status = "scheduled";
-  }
+  if (post.status !== "done") post.status = "scheduled";
 
   db.targets = db.targets.filter(t => !(t.postId === postId && (t.status === "pending" || t.status === "failed" || t.status === "running")));
   for (const profileId of profileIds) {
@@ -393,7 +405,7 @@ app.post("/api/post/:id/update", (req, res) => {
       status: "pending",
       error: "",
       updatedAt: Date.now(),
-      attempts: 0,
+      attempts: 0
     });
   }
 
@@ -402,23 +414,24 @@ app.post("/api/post/:id/update", (req, res) => {
 });
 
 app.post("/api/posts/bulk-reschedule", (req, res) => {
-  const { postIds, minuteOffset } = req.body || {};
-  if (!Array.isArray(postIds) || !postIds.length) return res.status(400).json({ error: "Choose at least one post" });
-  const offset = Number(minuteOffset);
-  if (!Number.isFinite(offset)) return res.status(400).json({ error: "Invalid minute offset" });
+  const postIds = Array.isArray(req.body?.postIds) ? req.body.postIds : [];
+  const minuteOffset = Number(req.body?.minuteOffset);
+  if (!postIds.length) return res.status(400).json({ error: "Choose at least one post" });
+  if (!Number.isFinite(minuteOffset)) return res.status(400).json({ error: "Invalid minuteOffset" });
 
   const db = loadDB();
   let changed = 0;
   for (const postId of postIds) {
     const post = findPost(db, postId);
     if (!post || post.status === "running" || post.status === "done") continue;
-    post.scheduledAt = Number(post.scheduledAt || Date.now()) + offset * 60 * 1000;
-    if (post.status !== "paused") post.status = "scheduled";
+    post.scheduledAt = Number(post.scheduledAt) + minuteOffset * 60 * 1000;
+    post.status = "scheduled";
     changed += 1;
   }
   saveDB(db);
   res.json({ ok: true, changed });
 });
+
 
 app.post("/api/target/:id/retry", (req, res) => {
   const targetId = req.params.id;
@@ -428,10 +441,6 @@ app.post("/api/target/:id/retry", (req, res) => {
   t.status = "pending";
   t.error = "";
   t.updatedAt = Date.now();
-  const post = findPost(db, t.postId);
-  if (post && post.status !== "paused" && post.status !== "done") {
-    post.status = "partial";
-  }
   saveDB(db);
   log("info", "Reset target to pending", { targetId });
   res.json({ ok: true });
@@ -701,8 +710,4 @@ app.listen(PORT, HOST, () => {
     authEnabled: basicAuthEnabled(),
   });
   console.log(`http://${HOST === "0.0.0.0" ? "localhost" : HOST}:${PORT}`);
-  schedulerTick().catch(err => {
-    lastSchedulerError = err.message || String(err);
-    log("error", "Startup catch-up failed", { error: lastSchedulerError });
-  });
 });
