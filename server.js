@@ -314,21 +314,74 @@ async function maybeDismissInstagramNoise(page) {
   await clickFirst(page, ["Not Now", "Cancel"]);
 }
 
-async function openComposer(page) {
-  const directUrls = [
-    "https://www.instagram.com/create/select/",
-    "https://www.instagram.com/create/details/",
+async function getFileInput(page) {
+  const selectors = [
+    'input[type="file"]',
+    'input[type="file"][accept*="image"]',
+    'input[type="file"][accept*="video"]',
   ];
 
-  for (const url of directUrls) {
-    try {
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
-      await page.waitForTimeout(2000);
-      if (await page.locator('input[type="file"]').count()) {
+  for (const selector of selectors) {
+    const locator = page.locator(selector);
+    if (await locator.count()) {
+      return locator.first();
+    }
+  }
+
+  return null;
+}
+
+async function waitForFileInput(page, timeout = 12000) {
+  const started = Date.now();
+  while (Date.now() - started < timeout) {
+    const input = await getFileInput(page);
+    if (input) return input;
+    await page.waitForTimeout(500);
+  }
+  return null;
+}
+
+async function clickCreatePostMenu(page) {
+  const postSelectors = [
+    'div[role="menuitem"]:has-text("Post")',
+    'div[role="button"]:has-text("Post")',
+    'button:has-text("Post")',
+    'a:has-text("Post")',
+  ];
+
+  for (const selector of postSelectors) {
+    const locator = page.locator(selector);
+    if (await locator.count()) {
+      try {
+        await locator.first().click({ timeout: 2500 });
         return true;
-      }
+      } catch {}
+    }
+  }
+
+  const textLocator = page.getByText('Post', { exact: true });
+  if (await textLocator.count()) {
+    try {
+      await textLocator.first().click({ timeout: 2500 });
+      return true;
     } catch {}
   }
+
+  return false;
+}
+
+async function openComposer(page) {
+  try {
+    await page.goto('https://www.instagram.com/create/select/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForTimeout(2500);
+    const directInput = await waitForFileInput(page, 5000);
+    if (directInput) return true;
+  } catch {}
+
+  try {
+    await page.goto('https://www.instagram.com/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.waitForTimeout(2500);
+  } catch {}
 
   const selectors = [
     'a[href="/create/select/"]',
@@ -341,45 +394,35 @@ async function openComposer(page) {
     const locator = page.locator(selector);
     if (await locator.count()) {
       try {
-        await locator.first().click({ timeout: 1500 });
-        await page.waitForTimeout(1200);
-        if (await page.locator('input[type="file"]').count()) {
-          return true;
+        await locator.first().click({ timeout: 2500 });
+        await page.waitForTimeout(1500);
+        const maybeInput = await waitForFileInput(page, 3000);
+        if (maybeInput) return true;
+        if (await clickCreatePostMenu(page)) {
+          await page.waitForTimeout(1500);
+          const postInput = await waitForFileInput(page, 5000);
+          if (postInput) return true;
         }
       } catch {}
     }
   }
 
-  const textOptions = ["New post", "Create"];
+  const textOptions = ['Create', 'New post'];
   for (const txt of textOptions) {
     const locator = page.getByText(txt, { exact: true });
     if (await locator.count()) {
       try {
-        await locator.first().click({ timeout: 1500 });
-        await page.waitForTimeout(1200);
-        if (await page.locator('input[type="file"]').count()) {
-          return true;
+        await locator.first().click({ timeout: 2500 });
+        await page.waitForTimeout(1500);
+        const maybeInput = await waitForFileInput(page, 3000);
+        if (maybeInput) return true;
+        if (await clickCreatePostMenu(page)) {
+          await page.waitForTimeout(1500);
+          const postInput = await waitForFileInput(page, 5000);
+          if (postInput) return true;
         }
       } catch {}
     }
-  }
-
-  const postOptions = [
-    page.getByText("Post", { exact: true }),
-    page.locator('div[role="menuitem"]:has-text("Post")'),
-    page.locator('button:has-text("Post")'),
-  ];
-
-  for (const locator of postOptions) {
-    try {
-      if (await locator.count()) {
-        await locator.first().click({ timeout: 1500 });
-        await page.waitForTimeout(1500);
-        if (await page.locator('input[type="file"]').count()) {
-          return true;
-        }
-      }
-    } catch {}
   }
 
   return false;
@@ -420,26 +463,26 @@ async function postToInstagram(target, post, profile) {
     viewport: { width: 1440, height: 1000 }
   });
 
-  const page = await browser.newPage();
+  const existingPages = browser.pages();
+  const page = existingPages.length ? existingPages[0] : await browser.newPage();
   const screenshotBase = path.join("uploads", `debug-${post.id}-${profile.id}-${Date.now()}`);
 
   try {
+    await page.bringToFront();
     await page.goto("https://www.instagram.com/", { waitUntil: "domcontentloaded", timeout: 60000 });
     await page.waitForTimeout(4000);
     await maybeDismissInstagramNoise(page);
 
     const opened = await openComposer(page);
     if (!opened) {
-      throw new Error(`Could not open Instagram post composer (url: ${page.url()})`);
+      throw new Error(`Could not open Instagram composer (url: ${page.url()})`);
     }
 
     await page.waitForTimeout(2000);
 
-    const fileInput = page.locator('input[type="file"]');
-    if (!await fileInput.count()) {
-      throw new Error(`Could not find file input after opening composer (url: ${page.url()})`);
-    }
-    await fileInput.first().setInputFiles(path.resolve(post.imagePath));
+    const fileInput = await waitForFileInput(page, 8000);
+    if (!fileInput) throw new Error(`Could not find file input (url: ${page.url()})`);
+    await fileInput.setInputFiles(path.resolve(post.imagePath));
     await page.waitForTimeout(3000);
 
     let step = await clickNext(page);

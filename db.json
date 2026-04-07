@@ -33,6 +33,15 @@
   ],
   "logs": [
     {
+      "id": "a0eu5y4p61",
+      "ts": 1775531703392,
+      "level": "info",
+      "message": "Server started",
+      "extra": {
+        "url": "http://localhost:3000"
+      }
+    },
+    {
       "id": "almizsvosd",
       "ts": 1775531449276,
       "level": "info",
