@@ -15,9 +15,9 @@
       "imagePath": "uploads\\b40e2e9e9ed2600b8b8a5e2607248de0",
       "imageUrl": "/uploads/b40e2e9e9ed2600b8b8a5e2607248de0",
       "scheduledAt": 1775530980000,
-      "status": "partial",
+      "status": "running",
       "createdAt": 1775530947220,
-      "lastRunAt": 1775531064054
+      "lastRunAt": 1775531449266
     }
   ],
   "targets": [
@@ -25,13 +25,110 @@
       "id": "xx7ik1g03d",
       "postId": "e1r02y8s4i",
       "profileId": "uruigavjab",
-      "status": "failed",
-      "error": "page.goto: Target page, context or browser has been closed\nCall log:\n\u001b[2m  - navigating to \"https://www.instagram.com/\", waiting until \"domcontentloaded\"\u001b[22m\n",
-      "updatedAt": 1775531067637,
-      "attempts": 5
+      "status": "running",
+      "error": "Could not find file input",
+      "updatedAt": 1775531449274,
+      "attempts": 9
     }
   ],
   "logs": [
+    {
+      "id": "almizsvosd",
+      "ts": 1775531449276,
+      "level": "info",
+      "message": "Posting to account",
+      "extra": {
+        "postId": "e1r02y8s4i",
+        "profileId": "uruigavjab",
+        "profileName": "Account 1"
+      }
+    },
+    {
+      "id": "ghoibmx3yz",
+      "ts": 1775531449270,
+      "level": "info",
+      "message": "Running post",
+      "extra": {
+        "postId": "e1r02y8s4i",
+        "targetCount": 1,
+        "manual": false
+      }
+    },
+    {
+      "id": "3h0pjjf49a",
+      "ts": 1775531433523,
+      "level": "info",
+      "message": "Posting to account",
+      "extra": {
+        "postId": "e1r02y8s4i",
+        "profileId": "uruigavjab",
+        "profileName": "Account 1"
+      }
+    },
+    {
+      "id": "kvfx0w9jmi",
+      "ts": 1775531433514,
+      "level": "info",
+      "message": "Running post",
+      "extra": {
+        "postId": "e1r02y8s4i",
+        "targetCount": 1,
+        "manual": true
+      }
+    },
+    {
+      "id": "zyicta81np",
+      "ts": 1775531419248,
+      "level": "info",
+      "message": "Posting to account",
+      "extra": {
+        "postId": "e1r02y8s4i",
+        "profileId": "uruigavjab",
+        "profileName": "Account 1"
+      }
+    },
+    {
+      "id": "i5vjsbwbk",
+      "ts": 1775531419240,
+      "level": "info",
+      "message": "Running post",
+      "extra": {
+        "postId": "e1r02y8s4i",
+        "targetCount": 1,
+        "manual": false
+      }
+    },
+    {
+      "id": "ylkce7y072",
+      "ts": 1775531404262,
+      "level": "info",
+      "message": "Posting to account",
+      "extra": {
+        "postId": "e1r02y8s4i",
+        "profileId": "uruigavjab",
+        "profileName": "Account 1"
+      }
+    },
+    {
+      "id": "lbv7c0tku2",
+      "ts": 1775531404243,
+      "level": "info",
+      "message": "Running post",
+      "extra": {
+        "postId": "e1r02y8s4i",
+        "targetCount": 1,
+        "manual": false
+      }
+    },
+    {
+      "id": "ycrmdqfkly",
+      "ts": 1775531389235,
+      "level": "info",
+      "message": "Server started",
+      "extra": {
+        "url": "http://localhost:3000"
+      }
+    },
     {
       "id": "trsysd144b",
       "ts": 1775531064065,

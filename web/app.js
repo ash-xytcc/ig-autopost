@@ -4,7 +4,6 @@ const els = {
   checkboxWrap: document.getElementById("checkboxWrap"),
   postsList: document.getElementById("postsList"),
   postsEmpty: document.getElementById("postsEmpty"),
-  logsList: document.getElementById("logsList"),
   addAccountBtn: document.getElementById("addAccountBtn"),
   refreshBtn: document.getElementById("refreshBtn"),
   postForm: document.getElementById("postForm"),
@@ -16,7 +15,7 @@ const els = {
   toast: document.getElementById("toast"),
 };
 
-let state = { profiles: [], posts: [], targets: [], logs: [] };
+let state = { profiles: [], posts: [], targets: [] };
 let selectedImage = null;
 let lastApiFailure = "";
 
@@ -168,28 +167,6 @@ function renderPosts() {
   });
 }
 
-function renderLogs() {
-  els.logsList.innerHTML = "";
-  const logs = state.logs || [];
-  if (!logs.length) {
-    els.logsList.innerHTML = `<div class="empty-mini">No logs yet.</div>`;
-    return;
-  }
-
-  logs.slice(0, 80).forEach(log => {
-    const row = document.createElement("div");
-    row.className = `log-row ${log.level}`;
-    row.innerHTML = `
-      <div class="log-meta">
-        <span class="pill ${log.level === "error" ? "failed" : "done"}">${escapeHtml(log.level)}</span>
-        <span>${fmtTime(log.ts)}</span>
-      </div>
-      <div class="log-message">${escapeHtml(log.message)}</div>
-    `;
-    els.logsList.appendChild(row);
-  });
-}
-
 function renderPreview() {
   els.previewCaption.textContent = els.captionInput.value || "Nothing yet.";
   if (selectedImage?.url) {
@@ -205,7 +182,6 @@ async function refreshState(showErrors = false) {
     lastApiFailure = "";
     renderAccounts();
     renderPosts();
-    renderLogs();
   } catch (error) {
     if (showErrors || lastApiFailure !== error.message) {
       showToast(error.message || "Could not refresh app state.", "error");

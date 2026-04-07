@@ -315,63 +315,37 @@ async function maybeDismissInstagramNoise(page) {
 }
 
 async function openComposer(page) {
-  const postMenuSelectors = [
-    'div[role="menuitem"]:has-text("Post")',
-    'div[role="button"]:has-text("Post")',
-    'a:has-text("Post")'
+  const directUrls = [
+    "https://www.instagram.com/create/select/",
+    "https://www.instagram.com/create/details/",
   ];
 
-  const clickPostMenuItem = async () => {
-    for (const selector of postMenuSelectors) {
-      const locator = page.locator(selector);
-      if (await locator.count()) {
-        try {
-          await locator.first().click({ timeout: 1500 });
-          return true;
-        } catch {}
+  for (const url of directUrls) {
+    try {
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60000 });
+      await page.waitForTimeout(2000);
+      if (await page.locator('input[type="file"]').count()) {
+        return true;
       }
-    }
-
-    const postText = page.getByText("Post", { exact: true });
-    if (await postText.count()) {
-      try {
-        await postText.first().click({ timeout: 1500 });
-        return true;
-      } catch {}
-    }
-
-    return false;
-  };
-
-  const directSelectors = [
-    'a[href="/create/select/"]',
-    'svg[aria-label="New post"]',
-    'div[role="menuitem"] svg[aria-label="New post"]'
-  ];
-
-  for (const selector of directSelectors) {
-    const locator = page.locator(selector);
-    if (await locator.count()) {
-      try {
-        await locator.first().click({ timeout: 1500 });
-        return true;
-      } catch {}
-    }
+    } catch {}
   }
 
-  const createTriggers = [
+  const selectors = [
+    'a[href="/create/select/"]',
+    'svg[aria-label="New post"]',
     'svg[aria-label="Create"]',
-    'button:has-text("Create")',
-    'div[role="button"]:has-text("Create")'
+    'div[role="menuitem"] svg[aria-label="New post"]',
   ];
 
-  for (const selector of createTriggers) {
+  for (const selector of selectors) {
     const locator = page.locator(selector);
     if (await locator.count()) {
       try {
         await locator.first().click({ timeout: 1500 });
-        await page.waitForTimeout(500);
-        if (await clickPostMenuItem()) return true;
+        await page.waitForTimeout(1200);
+        if (await page.locator('input[type="file"]').count()) {
+          return true;
+        }
       } catch {}
     }
   }
@@ -382,14 +356,33 @@ async function openComposer(page) {
     if (await locator.count()) {
       try {
         await locator.first().click({ timeout: 1500 });
-        if (txt === "New post") return true;
-        await page.waitForTimeout(500);
-        if (await clickPostMenuItem()) return true;
+        await page.waitForTimeout(1200);
+        if (await page.locator('input[type="file"]').count()) {
+          return true;
+        }
       } catch {}
     }
   }
 
-  return await clickPostMenuItem();
+  const postOptions = [
+    page.getByText("Post", { exact: true }),
+    page.locator('div[role="menuitem"]:has-text("Post")'),
+    page.locator('button:has-text("Post")'),
+  ];
+
+  for (const locator of postOptions) {
+    try {
+      if (await locator.count()) {
+        await locator.first().click({ timeout: 1500 });
+        await page.waitForTimeout(1500);
+        if (await page.locator('input[type="file"]').count()) {
+          return true;
+        }
+      }
+    } catch {}
+  }
+
+  return false;
 }
 
 async function clickNext(page) {
@@ -436,12 +429,16 @@ async function postToInstagram(target, post, profile) {
     await maybeDismissInstagramNoise(page);
 
     const opened = await openComposer(page);
-    if (!opened) throw new Error("Could not find Instagram new post button");
+    if (!opened) {
+      throw new Error(`Could not open Instagram post composer (url: ${page.url()})`);
+    }
 
     await page.waitForTimeout(2000);
 
     const fileInput = page.locator('input[type="file"]');
-    if (!await fileInput.count()) throw new Error("Could not find file input");
+    if (!await fileInput.count()) {
+      throw new Error(`Could not find file input after opening composer (url: ${page.url()})`);
+    }
     await fileInput.first().setInputFiles(path.resolve(post.imagePath));
     await page.waitForTimeout(3000);
 
