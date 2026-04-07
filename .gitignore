@@ -1,14 +1,7 @@
-# dependencies
 node_modules/
-
-# runtime data
-db.json
-uploads/
 profiles/
-
-# logs
+uploads/
+db.json
 *.log
-
-# OS
 .DS_Store
 Thumbs.db
