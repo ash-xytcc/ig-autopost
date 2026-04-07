@@ -14,6 +14,9 @@ if (!fs.existsSync("profiles")) fs.mkdirSync("profiles");
 
 const DB_FILE = "db.json";
 const TICK_MS = 15000;
+const PROFILE_LOGIN_POLL_MS = 2000;
+
+const activeProfileSetups = new Map();
 
 function createDefaultDb() {
   return { profiles: [], posts: [], targets: [], logs: [] };
@@ -58,6 +61,81 @@ function log(level, message, extra = {}) {
   console.log(`[${level}] ${message}`, extra);
 }
 
+function findProfile(db, profileId) {
+  return db.profiles.find(x => x.id === profileId);
+}
+
+function cleanupProfileSetup(profileId) {
+  const active = activeProfileSetups.get(profileId);
+  if (!active) return;
+  if (active.timer) clearTimeout(active.timer);
+  activeProfileSetups.delete(profileId);
+}
+
+async function hasInstagramSession(browser) {
+  const cookies = await browser.cookies(["https://www.instagram.com/"]);
+  return cookies.some(cookie => cookie.name === "sessionid" && cookie.value);
+}
+
+async function finalizeProfileSetup(profileId, outcome = {}) {
+  const active = activeProfileSetups.get(profileId);
+  if (!active || active.finished) return;
+  active.finished = true;
+  cleanupProfileSetup(profileId);
+
+  const db = loadDB();
+  const profile = findProfile(db, profileId);
+  if (!profile) return;
+
+  if (outcome.connected) {
+    profile.pending = false;
+    profile.connectedAt = Date.now();
+    saveDB(db);
+    log("info", "Instagram account connected", { profileId });
+    return;
+  }
+
+  db.profiles = db.profiles.filter(x => x.id !== profileId);
+  db.targets = db.targets.filter(t => t.profileId !== profileId);
+  saveDB(db);
+  log(outcome.error ? "error" : "info", outcome.error || "Instagram account setup cancelled", { profileId });
+}
+
+function watchProfileLogin(profileId, browser) {
+  const active = activeProfileSetups.get(profileId);
+  if (!active) return;
+
+  const poll = async () => {
+    const live = activeProfileSetups.get(profileId);
+    if (!live || live.finished) return;
+
+    try {
+      const loggedIn = await hasInstagramSession(browser);
+      if (loggedIn) {
+        await finalizeProfileSetup(profileId, { connected: true });
+        try {
+          await browser.close();
+        } catch {}
+        return;
+      }
+    } catch (error) {
+      await finalizeProfileSetup(profileId, { error: error.message || String(error) });
+      try {
+        await browser.close();
+      } catch {}
+      return;
+    }
+
+    live.timer = setTimeout(() => {
+      poll().catch(err => log("error", "Profile login watcher crashed", { profileId, error: err.message || String(err) }));
+    }, PROFILE_LOGIN_POLL_MS);
+  };
+
+  active.timer = setTimeout(() => {
+    poll().catch(err => log("error", "Profile login watcher crashed", { profileId, error: err.message || String(err) }));
+  }, PROFILE_LOGIN_POLL_MS);
+}
+
 const upload = multer({ dest: "uploads/" });
 
 app.get("/api/state", (req, res) => {
@@ -65,37 +143,48 @@ app.get("/api/state", (req, res) => {
 });
 
 app.post("/api/profile/start", async (req, res) => {
+  const db = loadDB();
   const profileId = id();
   const profilePath = path.join("profiles", profileId);
 
-  const browser = await chromium.launchPersistentContext(profilePath, {
-    headless: false,
-    viewport: { width: 1440, height: 1000 }
+  db.profiles.push({
+    id: profileId,
+    name: `Account ${db.profiles.length + 1}`,
+    createdAt: Date.now(),
+    pending: true,
+    connectedAt: null,
   });
+  saveDB(db);
 
-  const page = await browser.newPage();
-  await page.goto("https://www.instagram.com/", { waitUntil: "domcontentloaded" });
-
-  log("info", "Opened login browser for new account", { profileId });
-
-  let saved = false;
-  const persistProfile = () => {
-    if (saved) return;
-    saved = true;
-    const db = loadDB();
-    db.profiles.push({
-      id: profileId,
-      name: `Account ${db.profiles.length + 1}`,
-      createdAt: Date.now()
+  try {
+    const browser = await chromium.launchPersistentContext(profilePath, {
+      headless: false,
+      viewport: { width: 1440, height: 1000 }
     });
-    saveDB(db);
-    log("info", "Saved account profile", { profileId });
-  };
 
-  browser.on("close", persistProfile);
-  page.on("close", () => setTimeout(persistProfile, 250));
+    activeProfileSetups.set(profileId, {
+      browser,
+      finished: false,
+      timer: null,
+    });
 
-  res.json({ ok: true, profileId });
+    browser.on("close", () => {
+      finalizeProfileSetup(profileId, { cancelled: true }).catch(err => {
+        log("error", "Could not finish account setup after browser close", { profileId, error: err.message || String(err) });
+      });
+    });
+
+    const page = browser.pages()[0] || await browser.newPage();
+    await page.goto("https://www.instagram.com/", { waitUntil: "domcontentloaded", timeout: 60000 });
+
+    watchProfileLogin(profileId, browser);
+    log("info", "Opened login browser for new account", { profileId });
+
+    res.json({ ok: true, profileId });
+  } catch (error) {
+    await finalizeProfileSetup(profileId, { error: error.message || String(error) });
+    res.status(500).json({ error: "Could not open Instagram login window" });
+  }
 });
 
 app.post("/api/profile/rename", (req, res) => {

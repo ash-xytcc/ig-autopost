@@ -56,19 +56,26 @@ function renderAccounts() {
   }
 
   state.profiles.forEach(profile => {
+    const pending = !!profile.pending;
     const card = document.createElement("div");
     card.className = "account-card";
     card.innerHTML = `
       <div>
         <div class="account-name">${escapeHtml(profile.name || profile.id)}</div>
         <div class="account-id">${escapeHtml(profile.id)}</div>
+        <div class="account-id">
+          <span class="pill ${pending ? "pending" : "done"}">${pending ? "login pending" : "ready"}</span>
+          ${pending ? '<span> Finish Instagram login in the opened browser window.</span>' : ""}
+        </div>
       </div>
       <div class="account-actions">
-        <button class="button ghost" data-action="rename" data-id="${profile.id}">Rename</button>
+        <button class="button ghost" data-action="rename" data-id="${profile.id}" ${pending ? "disabled" : ""}>Rename</button>
         <button class="button ghost danger" data-action="remove" data-id="${profile.id}">Remove</button>
       </div>
     `;
     els.accountsList.appendChild(card);
+
+    if (pending) return;
 
     const row = document.createElement("label");
     row.className = "checkbox-row";
@@ -78,6 +85,10 @@ function renderAccounts() {
     `;
     els.checkboxWrap.appendChild(row);
   });
+
+  if (!els.checkboxWrap.children.length) {
+    els.checkboxWrap.innerHTML = `<div class="empty-mini">No ready accounts yet.</div>`;
+  }
 }
 
 function renderPosts() {
@@ -170,8 +181,18 @@ async function refreshState() {
 }
 
 async function addAccount() {
-  await fetch("/api/profile/start", { method: "POST" });
-  showToast("Browser opened. Log in to Instagram, then close that window.", "info");
+  els.addAccountBtn.disabled = true;
+  try {
+    const res = await fetch("/api/profile/start", { method: "POST" });
+    const payload = await res.json();
+    if (!res.ok) {
+      showToast(payload.error || "Could not open Instagram login window.", "error");
+      return;
+    }
+    await refreshState();
+  } finally {
+    els.addAccountBtn.disabled = false;
+  }
 }
 
 async function renameAccount(id) {
