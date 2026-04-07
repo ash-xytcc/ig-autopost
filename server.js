@@ -4,19 +4,66 @@ const fs = require("fs");
 const path = require("path");
 const { chromium } = require("playwright");
 
-const app = express();
-app.use(express.json({ limit: "10mb" }));
-app.use(express.static("web"));
-app.use("/uploads", express.static("uploads"));
-
-if (!fs.existsSync("uploads")) fs.mkdirSync("uploads");
-if (!fs.existsSync("profiles")) fs.mkdirSync("profiles");
-
-const DB_FILE = "db.json";
+const ROOT_DIR = __dirname;
+const WEB_DIR = path.join(ROOT_DIR, "web");
+const DATA_DIR = path.resolve(process.env.DATA_DIR || ROOT_DIR);
+const UPLOADS_DIR = path.join(DATA_DIR, "uploads");
+const PROFILES_DIR = path.join(DATA_DIR, "profiles");
+const DB_FILE = path.join(DATA_DIR, "db.json");
+const HOST = process.env.HOST || "0.0.0.0";
+const PORT = Number(process.env.PORT || 3000);
+const APP_USER = String(process.env.APP_USER || "").trim();
+const APP_PASS = String(process.env.APP_PASS || "");
 const TICK_MS = 15000;
 const PROFILE_LOGIN_POLL_MS = 2000;
 
+fs.mkdirSync(DATA_DIR, { recursive: true });
+fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+fs.mkdirSync(PROFILES_DIR, { recursive: true });
+
+const app = express();
+app.use(express.json({ limit: "10mb" }));
+
+function storageRelativePath(...parts) {
+  return parts.join("/").replace(/\\/g, "/");
+}
+
+function storageAbsolutePath(relativePath) {
+  return path.join(DATA_DIR, String(relativePath || "").replace(/^[/\\]+/, ""));
+}
+
+function basicAuthEnabled() {
+  return !!(APP_USER && APP_PASS);
+}
+
+function parseBasicAuth(header) {
+  if (!header || !header.startsWith("Basic ")) return null;
+  try {
+    const decoded = Buffer.from(header.slice(6), "base64").toString("utf8");
+    const idx = decoded.indexOf(":");
+    if (idx < 0) return null;
+    return { user: decoded.slice(0, idx), pass: decoded.slice(idx + 1) };
+  } catch {
+    return null;
+  }
+}
+
+function authRequired(req, res, next) {
+  if (!basicAuthEnabled() || req.path === "/api/health") return next();
+  const creds = parseBasicAuth(req.headers.authorization || "");
+  if (creds && creds.user === APP_USER && creds.pass === APP_PASS) return next();
+  res.setHeader("WWW-Authenticate", 'Basic realm="IG Autopost"');
+  return res.status(401).send("Authentication required");
+}
+
+app.use(authRequired);
+app.use(express.static(WEB_DIR));
+app.use("/uploads", express.static(UPLOADS_DIR));
+
 const activeProfileSetups = new Map();
+let schedulerBusy = false;
+let lastSchedulerTickAt = null;
+let lastSchedulerError = "";
 
 function createDefaultDb() {
   return { profiles: [], posts: [], targets: [], logs: [] };
@@ -71,7 +118,7 @@ function normalizeProfile(profile, index = 0) {
 }
 
 function sendApiError(res, status, error) {
-  const message = error && error.message ? error.message : String(error || 'Unknown error');
+  const message = error && error.message ? error.message : String(error || "Unknown error");
   res.status(status).json({ error: message });
 }
 
@@ -150,7 +197,21 @@ function watchProfileLogin(profileId, browser) {
   }, PROFILE_LOGIN_POLL_MS);
 }
 
-const upload = multer({ dest: "uploads/" });
+const upload = multer({ dest: UPLOADS_DIR });
+
+app.get("/api/health", (req, res) => {
+  res.json({
+    ok: true,
+    now: Date.now(),
+    uptimeSec: Math.round(process.uptime()),
+    schedulerBusy,
+    lastSchedulerTickAt,
+    lastSchedulerError,
+    hostedMode: DATA_DIR !== ROOT_DIR,
+    authEnabled: basicAuthEnabled(),
+    dataDir: DATA_DIR,
+  });
+});
 
 app.get("/api/state", (req, res) => {
   const db = loadDB();
@@ -162,7 +223,7 @@ app.get("/api/state", (req, res) => {
 app.post("/api/profile/start", async (req, res) => {
   const db = loadDB();
   const profileId = id();
-  const profilePath = path.join("profiles", profileId);
+  const profilePath = path.join(PROFILES_DIR, profileId);
 
   db.profiles.push(normalizeProfile({
     id: profileId,
@@ -226,8 +287,9 @@ app.delete("/api/profile/:id", (req, res) => {
 
 app.post("/api/upload", upload.single("file"), (req, res) => {
   if (!req.file) return res.status(400).json({ error: "File required" });
-  log("info", "Uploaded media", { path: req.file.path, original: req.file.originalname });
-  res.json({ path: req.file.path, url: "/" + req.file.path.replaceAll("\\", "/") });
+  const storedPath = storageRelativePath("uploads", req.file.filename);
+  log("info", "Uploaded media", { path: storedPath, original: req.file.originalname });
+  res.json({ path: storedPath, url: `/uploads/${req.file.filename}` });
 });
 
 app.post("/api/post", (req, res) => {
@@ -243,7 +305,7 @@ app.post("/api/post", (req, res) => {
     id: postId,
     caption: String(caption || ""),
     imagePath,
-    imageUrl: imageUrl || ("/" + imagePath.replaceAll("\\", "/")),
+    imageUrl: imageUrl || `/${String(imagePath).replaceAll("\\", "/")}`,
     scheduledAt: time,
     status: "scheduled",
     createdAt: Date.now(),
@@ -297,21 +359,10 @@ app.post("/api/post/:id/delete", (req, res) => {
 
 async function clickFirst(page, labels) {
   for (const label of labels) {
-    const roleLocators = [
-      page.getByRole("button", { name: new RegExp(`^${label}$`, "i") }),
-      page.getByRole("link", { name: new RegExp(`^${label}$`, "i") }),
-      page.getByRole("menuitem", { name: new RegExp(`^${label}$`, "i") }),
-      page.locator(`button:has-text("${label}")`),
-      page.locator(`[role="button"]:has-text("${label}")`),
-      page.locator(`div[role="menuitem"]:has-text("${label}")`),
-      page.getByText(label, { exact: true }),
-    ];
-
-    for (const locator of roleLocators) {
+    const locator = page.getByText(label, { exact: true });
+    if (await locator.count()) {
       try {
-        const count = await locator.count();
-        if (!count) continue;
-        await locator.first().click({ timeout: 2500 });
+        await locator.first().click({ timeout: 1500 });
         return true;
       } catch {}
     }
@@ -325,141 +376,75 @@ async function maybeDismissInstagramNoise(page) {
   await clickFirst(page, ["Not Now", "Cancel"]);
 }
 
-async function waitForFileInput(page, timeoutMs = 15000) {
-  const started = Date.now();
-  while (Date.now() - started < timeoutMs) {
-    const locator = page.locator('input[type="file"]');
-    try {
-      if (await locator.count()) return locator.first();
-    } catch {}
-    await page.waitForTimeout(500);
-  }
-  return null;
-}
-
 async function openComposer(page) {
-  try {
-    await page.goto("https://www.instagram.com/create/select/", { waitUntil: "domcontentloaded", timeout: 60000 });
-    const directInput = await waitForFileInput(page, 5000);
-    if (directInput) return true;
-  } catch {}
+  const selectors = [
+    'svg[aria-label="New post"]',
+    'svg[aria-label="Create"]',
+    'a[href="/create/select/"]',
+    'div[role="menuitem"] svg[aria-label="New post"]',
+  ];
 
-  await page.goto("https://www.instagram.com/", { waitUntil: "domcontentloaded", timeout: 60000 });
-  await page.waitForTimeout(2500);
-  await maybeDismissInstagramNoise(page);
-
-  if (!await clickFirst(page, ["Create", "New post"])) {
-    const selectors = [
-      'a[href="/create/select/"]',
-      'svg[aria-label="New post"]',
-      'svg[aria-label="Create"]',
-      'div[role="menuitem"] svg[aria-label="New post"]',
-    ];
-
-    for (const selector of selectors) {
-      const locator = page.locator(selector);
+  for (const selector of selectors) {
+    const locator = page.locator(selector);
+    if (await locator.count()) {
       try {
-        if (await locator.count()) {
-          await locator.first().click({ timeout: 2500 });
-          break;
-        }
+        await locator.first().click({ timeout: 1500 });
+        return true;
       } catch {}
     }
   }
 
-  await page.waitForTimeout(1200);
-  await clickFirst(page, ["Post"]);
-  const input = await waitForFileInput(page, 8000);
-  return !!input;
+  const textOptions = ["Create", "New post"];
+  for (const txt of textOptions) {
+    const locator = page.getByText(txt, { exact: true });
+    if (await locator.count()) {
+      try {
+        await locator.first().click({ timeout: 1500 });
+        return true;
+      } catch {}
+    }
+  }
+
+  return false;
 }
 
 async function clickNext(page) {
-  const buttonSets = [
-    page.getByRole("button", { name: /^Next$/i }),
-    page.locator('button:has-text("Next")'),
-    page.locator('[role="button"]:has-text("Next")'),
-  ];
-
-  for (const locator of buttonSets) {
-    try {
-      const count = await locator.count();
-      if (!count) continue;
-      await locator.last().click({ timeout: 3000 });
-      return true;
-    } catch {}
-  }
-  return false;
-}
-
-async function clickShare(page) {
-  const buttonSets = [
-    page.getByRole("button", { name: /^Share$/i }),
-    page.locator('button:has-text("Share")'),
-    page.locator('[role="button"]:has-text("Share")'),
-    page.getByText("Share", { exact: true }),
-  ];
-
-  for (const locator of buttonSets) {
-    try {
-      const count = await locator.count();
-      if (!count) continue;
-      await locator.last().click({ timeout: 3000 });
-      return true;
-    } catch {}
-  }
-  return false;
-}
-
-async function waitForCaptionField(page, timeoutMs = 15000) {
-  const selectors = [
-    'textarea[aria-label*="caption" i]',
-    'textarea',
-    'div[role="textbox"][aria-label*="caption" i]',
-    'div[role="textbox"]',
-    '[contenteditable="true"][aria-label*="caption" i]',
-  ];
-  const started = Date.now();
-  while (Date.now() - started < timeoutMs) {
-    for (const selector of selectors) {
-      const locator = page.locator(selector);
+  const candidates = ["Next", "Share"];
+  for (const txt of candidates) {
+    const locator = page.getByText(txt, { exact: true });
+    if (await locator.count()) {
       try {
-        if (await locator.count()) return locator.first();
+        await locator.first().click({ timeout: 2000 });
+        return txt;
       } catch {}
     }
-    await page.waitForTimeout(500);
   }
   return null;
 }
 
 async function setCaption(page, caption) {
-  const locator = await waitForCaptionField(page, 12000);
-  if (!locator) return false;
-  try {
-    await locator.click({ timeout: 2000 });
-  } catch {}
-  try {
-    await locator.fill(caption);
-    return true;
-  } catch {}
-  try {
-    await locator.press("Control+A");
-  } catch {}
-  try {
-    await locator.type(caption, { delay: 10 });
-    return true;
-  } catch {}
+  const selectors = ["textarea", 'div[role="textbox"]', 'textarea[aria-label]'];
+  for (const selector of selectors) {
+    const locator = page.locator(selector);
+    if (await locator.count()) {
+      try {
+        await locator.first().fill(caption);
+        return true;
+      } catch {}
+    }
+  }
   return false;
 }
 
 async function postToInstagram(target, post, profile) {
-  const profilePath = path.join("profiles", profile.id);
+  const profilePath = path.join(PROFILES_DIR, profile.id);
   const browser = await chromium.launchPersistentContext(profilePath, {
     headless: false,
     viewport: { width: 1440, height: 1000 }
   });
 
   const page = await browser.newPage();
-  const screenshotBase = path.join("uploads", `debug-${post.id}-${profile.id}-${Date.now()}`);
+  const screenshotBase = path.join(UPLOADS_DIR, `debug-${post.id}-${profile.id}-${Date.now()}`);
 
   try {
     await page.goto("https://www.instagram.com/", { waitUntil: "domcontentloaded", timeout: 60000 });
@@ -467,28 +452,29 @@ async function postToInstagram(target, post, profile) {
     await maybeDismissInstagramNoise(page);
 
     const opened = await openComposer(page);
-    if (!opened) throw new Error(`Could not open post composer (url: ${page.url()})`);
+    if (!opened) throw new Error("Could not find Instagram new post button");
 
-    const fileInput = await waitForFileInput(page, 12000);
-    if (!fileInput) throw new Error(`Could not find file input (url: ${page.url()})`);
-    await fileInput.setInputFiles(path.resolve(post.imagePath));
-    await page.waitForTimeout(4000);
+    await page.waitForTimeout(2000);
 
-    const firstNext = await clickNext(page);
-    if (!firstNext) throw new Error(`Could not find first Next button (url: ${page.url()})`);
-    await page.waitForTimeout(2500);
-
-    await clickNext(page);
+    const fileInput = page.locator('input[type="file"]');
+    if (!await fileInput.count()) throw new Error("Could not find file input");
+    await fileInput.first().setInputFiles(storageAbsolutePath(post.imagePath));
     await page.waitForTimeout(3000);
 
-    const captionOk = await setCaption(page, post.caption || "");
-    if (!captionOk) throw new Error(`Could not find caption field (url: ${page.url()})`);
-
+    let step = await clickNext(page);
+    if (!step) throw new Error("Could not find first Next button");
     await page.waitForTimeout(1500);
-    const shareClicked = await clickShare(page);
-    if (!shareClicked) throw new Error(`Could not find Share button (url: ${page.url()})`);
 
-    await page.waitForTimeout(8000);
+    step = await clickNext(page);
+    await page.waitForTimeout(2000);
+
+    const captionOk = await setCaption(page, post.caption || "");
+    if (!captionOk) throw new Error("Could not find caption field");
+
+    const shareClicked = await clickFirst(page, ["Share"]);
+    if (!shareClicked) throw new Error("Could not find Share button");
+
+    await page.waitForTimeout(6000);
     await page.screenshot({ path: `${screenshotBase}-success.png`, fullPage: true });
     await browser.close();
 
@@ -501,8 +487,6 @@ async function postToInstagram(target, post, profile) {
     return { ok: false, error: error.message || String(error) };
   }
 }
-
-let schedulerBusy = false;
 
 async function processPost(postId, manual = false) {
   const db = loadDB();
@@ -584,6 +568,7 @@ async function processPost(postId, manual = false) {
 async function schedulerTick() {
   if (schedulerBusy) return;
   schedulerBusy = true;
+  lastSchedulerTickAt = Date.now();
   try {
     const db = loadDB();
     const now = Date.now();
@@ -591,38 +576,40 @@ async function schedulerTick() {
     for (const post of due) {
       await processPost(post.id, false);
     }
+    lastSchedulerError = "";
+  } catch (error) {
+    lastSchedulerError = error.message || String(error);
+    log("error", "Scheduler tick failed", { error: lastSchedulerError });
   } finally {
     schedulerBusy = false;
   }
 }
 
+app.use((err, req, res, next) => {
+  log("error", "Unhandled server error", { error: err?.message || String(err) });
+  sendApiError(res, 500, err);
+});
+
 setInterval(() => {
-  schedulerTick().catch(err => log("error", "Scheduler tick crashed", { error: err.message || String(err) }));
+  schedulerTick().catch(err => {
+    lastSchedulerError = err.message || String(err);
+    log("error", "Scheduler crashed", { error: lastSchedulerError });
+  });
 }, TICK_MS);
 
-app.use((err, req, res, next) => {
-  log("error", "Unhandled server error", {
-    path: req?.path,
-    method: req?.method,
-    error: err?.message || String(err),
+process.on("unhandledRejection", error => {
+  log("error", "Unhandled promise rejection", { error: error?.message || String(error) });
+});
+
+process.on("uncaughtException", error => {
+  log("error", "Uncaught exception", { error: error?.message || String(error) });
+});
+
+app.listen(PORT, HOST, () => {
+  log("info", "Server started", {
+    url: `http://${HOST === "0.0.0.0" ? "localhost" : HOST}:${PORT}`,
+    dataDir: DATA_DIR,
+    authEnabled: basicAuthEnabled(),
   });
-
-  if (req?.path && req.path.startsWith('/api/')) {
-    return sendApiError(res, 500, err || 'Server error');
-  }
-
-  next(err);
-});
-
-process.on('unhandledRejection', (error) => {
-  log('error', 'Unhandled promise rejection', { error: error?.message || String(error) });
-});
-
-process.on('uncaughtException', (error) => {
-  log('error', 'Uncaught exception', { error: error?.message || String(error) });
-});
-
-app.listen(3000, () => {
-  log("info", "Server started", { url: "http://localhost:3000" });
-  console.log("http://localhost:3000");
+  console.log(`http://${HOST === "0.0.0.0" ? "localhost" : HOST}:${PORT}`);
 });

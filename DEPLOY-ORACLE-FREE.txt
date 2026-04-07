@@ -1,0 +1,38 @@
+CHOICE
+Oracle Cloud Always Free VM.
+
+WHY
+This app needs a long running Node process, persistent disk, and Playwright Chromium sessions.
+Cloudflare free is the wrong shape for that.
+
+APP CHANGES IN THIS PATCH
+- Hosted mode via DATA_DIR
+- Basic auth via APP_USER and APP_PASS
+- HOST and PORT env support
+- Health endpoint at /api/health
+- Uploads, profiles, screenshots, and db can live on persistent disk
+- Linux Playwright install script added to package.json
+
+UBUNTU VM COMMANDS
+sudo apt update && sudo apt install -y curl unzip
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt install -y nodejs
+cd /opt
+sudo mkdir -p ig-autopost-data
+sudo chown $USER:$USER ig-autopost-data
+# put your repo here, then:
+cd /opt/ig-autopost
+npm install
+npm run install:browsers:linux
+APP_USER=YOURUSER APP_PASS=YOURPASS HOST=0.0.0.0 PORT=3000 DATA_DIR=/opt/ig-autopost-data nohup npm start > app.log 2>&1 &
+
+WHAT TO PERSIST
+/opt/ig-autopost-data/db.json
+/opt/ig-autopost-data/uploads
+/opt/ig-autopost-data/profiles
+
+FIRST LOGIN
+Open the app in browser.
+Click Add account.
+Log in to Instagram in the opened Playwright browser.
+After that, scheduled posts can run from the VM without your home computer on.
