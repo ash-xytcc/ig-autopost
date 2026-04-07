@@ -1,23 +1,5 @@
 {
-  "profiles": [
-    {
-      "id": "sd6y7u8kig"
-    },
-    {
-      "id": "b4pqrejp7ys"
-    },
-    {
-      "id": "gpn6mloj3ta"
-    }
-  ],
-  "posts": [
-    {
-      "id": "rb18bq7e8u7",
-      "caption": "Band Line up May day 2026",
-      "image_path": "uploads\\9343baf6d93e5ea6a8617b029f2b8d09",
-      "scheduled_at": 1775528580000,
-      "status": "done"
-    }
-  ],
+  "profiles": [],
+  "posts": [],
   "targets": []
 }
