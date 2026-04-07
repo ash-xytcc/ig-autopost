@@ -297,10 +297,21 @@ app.post("/api/post/:id/delete", (req, res) => {
 
 async function clickFirst(page, labels) {
   for (const label of labels) {
-    const locator = page.getByText(label, { exact: true });
-    if (await locator.count()) {
+    const roleLocators = [
+      page.getByRole("button", { name: new RegExp(`^${label}$`, "i") }),
+      page.getByRole("link", { name: new RegExp(`^${label}$`, "i") }),
+      page.getByRole("menuitem", { name: new RegExp(`^${label}$`, "i") }),
+      page.locator(`button:has-text("${label}")`),
+      page.locator(`[role="button"]:has-text("${label}")`),
+      page.locator(`div[role="menuitem"]:has-text("${label}")`),
+      page.getByText(label, { exact: true }),
+    ];
+
+    for (const locator of roleLocators) {
       try {
-        await locator.first().click({ timeout: 1500 });
+        const count = await locator.count();
+        if (!count) continue;
+        await locator.first().click({ timeout: 2500 });
         return true;
       } catch {}
     }
@@ -314,145 +325,129 @@ async function maybeDismissInstagramNoise(page) {
   await clickFirst(page, ["Not Now", "Cancel"]);
 }
 
-async function getFileInput(page) {
-  const selectors = [
-    'input[type="file"]',
-    'input[type="file"][accept*="image"]',
-    'input[type="file"][accept*="video"]',
-  ];
-
-  for (const selector of selectors) {
-    const locator = page.locator(selector);
-    if (await locator.count()) {
-      return locator.first();
-    }
-  }
-
-  return null;
-}
-
-async function waitForFileInput(page, timeout = 12000) {
+async function waitForFileInput(page, timeoutMs = 15000) {
   const started = Date.now();
-  while (Date.now() - started < timeout) {
-    const input = await getFileInput(page);
-    if (input) return input;
+  while (Date.now() - started < timeoutMs) {
+    const locator = page.locator('input[type="file"]');
+    try {
+      if (await locator.count()) return locator.first();
+    } catch {}
     await page.waitForTimeout(500);
   }
   return null;
 }
 
-async function clickCreatePostMenu(page) {
-  const postSelectors = [
-    'div[role="menuitem"]:has-text("Post")',
-    'div[role="button"]:has-text("Post")',
-    'button:has-text("Post")',
-    'a:has-text("Post")',
-  ];
-
-  for (const selector of postSelectors) {
-    const locator = page.locator(selector);
-    if (await locator.count()) {
-      try {
-        await locator.first().click({ timeout: 2500 });
-        return true;
-      } catch {}
-    }
-  }
-
-  const textLocator = page.getByText('Post', { exact: true });
-  if (await textLocator.count()) {
-    try {
-      await textLocator.first().click({ timeout: 2500 });
-      return true;
-    } catch {}
-  }
-
-  return false;
-}
-
 async function openComposer(page) {
   try {
-    await page.goto('https://www.instagram.com/create/select/', { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await page.waitForTimeout(2500);
+    await page.goto("https://www.instagram.com/create/select/", { waitUntil: "domcontentloaded", timeout: 60000 });
     const directInput = await waitForFileInput(page, 5000);
     if (directInput) return true;
   } catch {}
 
-  try {
-    await page.goto('https://www.instagram.com/', { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await page.waitForTimeout(2500);
-  } catch {}
+  await page.goto("https://www.instagram.com/", { waitUntil: "domcontentloaded", timeout: 60000 });
+  await page.waitForTimeout(2500);
+  await maybeDismissInstagramNoise(page);
 
-  const selectors = [
-    'a[href="/create/select/"]',
-    'svg[aria-label="New post"]',
-    'svg[aria-label="Create"]',
-    'div[role="menuitem"] svg[aria-label="New post"]',
-  ];
+  if (!await clickFirst(page, ["Create", "New post"])) {
+    const selectors = [
+      'a[href="/create/select/"]',
+      'svg[aria-label="New post"]',
+      'svg[aria-label="Create"]',
+      'div[role="menuitem"] svg[aria-label="New post"]',
+    ];
 
-  for (const selector of selectors) {
-    const locator = page.locator(selector);
-    if (await locator.count()) {
+    for (const selector of selectors) {
+      const locator = page.locator(selector);
       try {
-        await locator.first().click({ timeout: 2500 });
-        await page.waitForTimeout(1500);
-        const maybeInput = await waitForFileInput(page, 3000);
-        if (maybeInput) return true;
-        if (await clickCreatePostMenu(page)) {
-          await page.waitForTimeout(1500);
-          const postInput = await waitForFileInput(page, 5000);
-          if (postInput) return true;
+        if (await locator.count()) {
+          await locator.first().click({ timeout: 2500 });
+          break;
         }
       } catch {}
     }
   }
 
-  const textOptions = ['Create', 'New post'];
-  for (const txt of textOptions) {
-    const locator = page.getByText(txt, { exact: true });
-    if (await locator.count()) {
-      try {
-        await locator.first().click({ timeout: 2500 });
-        await page.waitForTimeout(1500);
-        const maybeInput = await waitForFileInput(page, 3000);
-        if (maybeInput) return true;
-        if (await clickCreatePostMenu(page)) {
-          await page.waitForTimeout(1500);
-          const postInput = await waitForFileInput(page, 5000);
-          if (postInput) return true;
-        }
-      } catch {}
-    }
-  }
-
-  return false;
+  await page.waitForTimeout(1200);
+  await clickFirst(page, ["Post"]);
+  const input = await waitForFileInput(page, 8000);
+  return !!input;
 }
 
 async function clickNext(page) {
-  const candidates = ["Next", "Share"];
-  for (const txt of candidates) {
-    const locator = page.getByText(txt, { exact: true });
-    if (await locator.count()) {
+  const buttonSets = [
+    page.getByRole("button", { name: /^Next$/i }),
+    page.locator('button:has-text("Next")'),
+    page.locator('[role="button"]:has-text("Next")'),
+  ];
+
+  for (const locator of buttonSets) {
+    try {
+      const count = await locator.count();
+      if (!count) continue;
+      await locator.last().click({ timeout: 3000 });
+      return true;
+    } catch {}
+  }
+  return false;
+}
+
+async function clickShare(page) {
+  const buttonSets = [
+    page.getByRole("button", { name: /^Share$/i }),
+    page.locator('button:has-text("Share")'),
+    page.locator('[role="button"]:has-text("Share")'),
+    page.getByText("Share", { exact: true }),
+  ];
+
+  for (const locator of buttonSets) {
+    try {
+      const count = await locator.count();
+      if (!count) continue;
+      await locator.last().click({ timeout: 3000 });
+      return true;
+    } catch {}
+  }
+  return false;
+}
+
+async function waitForCaptionField(page, timeoutMs = 15000) {
+  const selectors = [
+    'textarea[aria-label*="caption" i]',
+    'textarea',
+    'div[role="textbox"][aria-label*="caption" i]',
+    'div[role="textbox"]',
+    '[contenteditable="true"][aria-label*="caption" i]',
+  ];
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    for (const selector of selectors) {
+      const locator = page.locator(selector);
       try {
-        await locator.first().click({ timeout: 2000 });
-        return txt;
+        if (await locator.count()) return locator.first();
       } catch {}
     }
+    await page.waitForTimeout(500);
   }
   return null;
 }
 
 async function setCaption(page, caption) {
-  const selectors = ["textarea", 'div[role="textbox"]', 'textarea[aria-label]'];
-  for (const selector of selectors) {
-    const locator = page.locator(selector);
-    if (await locator.count()) {
-      try {
-        await locator.first().fill(caption);
-        return true;
-      } catch {}
-    }
-  }
+  const locator = await waitForCaptionField(page, 12000);
+  if (!locator) return false;
+  try {
+    await locator.click({ timeout: 2000 });
+  } catch {}
+  try {
+    await locator.fill(caption);
+    return true;
+  } catch {}
+  try {
+    await locator.press("Control+A");
+  } catch {}
+  try {
+    await locator.type(caption, { delay: 10 });
+    return true;
+  } catch {}
   return false;
 }
 
@@ -463,42 +458,37 @@ async function postToInstagram(target, post, profile) {
     viewport: { width: 1440, height: 1000 }
   });
 
-  const existingPages = browser.pages();
-  const page = existingPages.length ? existingPages[0] : await browser.newPage();
+  const page = await browser.newPage();
   const screenshotBase = path.join("uploads", `debug-${post.id}-${profile.id}-${Date.now()}`);
 
   try {
-    await page.bringToFront();
     await page.goto("https://www.instagram.com/", { waitUntil: "domcontentloaded", timeout: 60000 });
     await page.waitForTimeout(4000);
     await maybeDismissInstagramNoise(page);
 
     const opened = await openComposer(page);
-    if (!opened) {
-      throw new Error(`Could not open Instagram composer (url: ${page.url()})`);
-    }
+    if (!opened) throw new Error(`Could not open post composer (url: ${page.url()})`);
 
-    await page.waitForTimeout(2000);
-
-    const fileInput = await waitForFileInput(page, 8000);
+    const fileInput = await waitForFileInput(page, 12000);
     if (!fileInput) throw new Error(`Could not find file input (url: ${page.url()})`);
     await fileInput.setInputFiles(path.resolve(post.imagePath));
+    await page.waitForTimeout(4000);
+
+    const firstNext = await clickNext(page);
+    if (!firstNext) throw new Error(`Could not find first Next button (url: ${page.url()})`);
+    await page.waitForTimeout(2500);
+
+    await clickNext(page);
     await page.waitForTimeout(3000);
 
-    let step = await clickNext(page);
-    if (!step) throw new Error("Could not find first Next button");
-    await page.waitForTimeout(1500);
-
-    step = await clickNext(page);
-    await page.waitForTimeout(2000);
-
     const captionOk = await setCaption(page, post.caption || "");
-    if (!captionOk) throw new Error("Could not find caption field");
+    if (!captionOk) throw new Error(`Could not find caption field (url: ${page.url()})`);
 
-    const shareClicked = await clickFirst(page, ["Share"]);
-    if (!shareClicked) throw new Error("Could not find Share button");
+    await page.waitForTimeout(1500);
+    const shareClicked = await clickShare(page);
+    if (!shareClicked) throw new Error(`Could not find Share button (url: ${page.url()})`);
 
-    await page.waitForTimeout(6000);
+    await page.waitForTimeout(8000);
     await page.screenshot({ path: `${screenshotBase}-success.png`, fullPage: true });
     await browser.close();
 

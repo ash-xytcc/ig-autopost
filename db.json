@@ -10,28 +10,92 @@
   ],
   "posts": [
     {
-      "id": "e1r02y8s4i",
-      "caption": "line up for may day 2026",
-      "imagePath": "uploads\\b40e2e9e9ed2600b8b8a5e2607248de0",
-      "imageUrl": "/uploads/b40e2e9e9ed2600b8b8a5e2607248de0",
-      "scheduledAt": 1775530980000,
+      "id": "d454lkcw1s",
+      "caption": "line up may day 2026",
+      "imagePath": "uploads\\18c59da8f2505da8589b8ba52210d4fa",
+      "imageUrl": "/uploads/18c59da8f2505da8589b8ba52210d4fa",
+      "scheduledAt": 1775532120000,
       "status": "running",
-      "createdAt": 1775530947220,
-      "lastRunAt": 1775531449266
+      "createdAt": 1775532105069,
+      "lastRunAt": 1775532153622
     }
   ],
   "targets": [
     {
-      "id": "xx7ik1g03d",
-      "postId": "e1r02y8s4i",
+      "id": "o49kwhuje4",
+      "postId": "d454lkcw1s",
       "profileId": "uruigavjab",
       "status": "running",
-      "error": "Could not find file input",
-      "updatedAt": 1775531449274,
-      "attempts": 9
+      "error": "Could not find Share button",
+      "updatedAt": 1775532153629,
+      "attempts": 2
     }
   ],
   "logs": [
+    {
+      "id": "d8yf6boyz2",
+      "ts": 1775532153633,
+      "level": "info",
+      "message": "Posting to account",
+      "extra": {
+        "postId": "d454lkcw1s",
+        "profileId": "uruigavjab",
+        "profileName": "Account 1"
+      }
+    },
+    {
+      "id": "86qym9i9u8",
+      "ts": 1775532153625,
+      "level": "info",
+      "message": "Running post",
+      "extra": {
+        "postId": "d454lkcw1s",
+        "targetCount": 1,
+        "manual": false
+      }
+    },
+    {
+      "id": "9mx1q0cvs2",
+      "ts": 1775532123615,
+      "level": "info",
+      "message": "Posting to account",
+      "extra": {
+        "postId": "d454lkcw1s",
+        "profileId": "uruigavjab",
+        "profileName": "Account 1"
+      }
+    },
+    {
+      "id": "bmztuitb27",
+      "ts": 1775532123608,
+      "level": "info",
+      "message": "Running post",
+      "extra": {
+        "postId": "d454lkcw1s",
+        "targetCount": 1,
+        "manual": false
+      }
+    },
+    {
+      "id": "1i72f13saq",
+      "ts": 1775532105071,
+      "level": "info",
+      "message": "Scheduled post",
+      "extra": {
+        "postId": "d454lkcw1s",
+        "profileCount": 1
+      }
+    },
+    {
+      "id": "cxtlb6bhoo",
+      "ts": 1775532105021,
+      "level": "info",
+      "message": "Uploaded media",
+      "extra": {
+        "path": "uploads\\18c59da8f2505da8589b8ba52210d4fa",
+        "original": "Screenshot 2026-04-06 103513.png"
+      }
+    },
     {
       "id": "a0eu5y4p61",
       "ts": 1775531703392,
