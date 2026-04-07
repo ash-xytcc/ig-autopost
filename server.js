@@ -117,6 +117,20 @@ function normalizeProfile(profile, index = 0) {
   };
 }
 
+function normalizePost(post) {
+  const status = String(post?.status || "scheduled");
+  return {
+    ...post,
+    caption: String(post?.caption || ""),
+    imagePath: String(post?.imagePath || ""),
+    imageUrl: String(post?.imageUrl || (post?.imagePath ? `/${String(post.imagePath).replaceAll("\\", "/")}` : "")),
+    scheduledAt: Number(post?.scheduledAt || Date.now()),
+    status,
+    createdAt: Number(post?.createdAt || Date.now()),
+    lastRunAt: post?.lastRunAt || null,
+  };
+}
+
 function sendApiError(res, status, error) {
   const message = error && error.message ? error.message : String(error || "Unknown error");
   res.status(status).json({ error: message });
@@ -124,6 +138,10 @@ function sendApiError(res, status, error) {
 
 function findProfile(db, profileId) {
   return db.profiles.find(x => x.id === profileId);
+}
+
+function findPost(db, postId) {
+  return db.posts.find(x => x.id === postId);
 }
 
 function cleanupProfileSetup(profileId) {
@@ -216,6 +234,7 @@ app.get("/api/health", (req, res) => {
 app.get("/api/state", (req, res) => {
   const db = loadDB();
   db.profiles = db.profiles.map((profile, index) => normalizeProfile(profile, index));
+  db.posts = db.posts.map(post => normalizePost(post));
   saveDB(db);
   res.json(db);
 });
@@ -292,15 +311,16 @@ app.post("/api/upload", upload.single("file"), (req, res) => {
   res.json({ path: storedPath, url: `/uploads/${req.file.filename}` });
 });
 
-function createPostRecord(db, payload = {}) {
-  const { caption, imagePath, imageUrl, scheduledAt, profileIds } = payload || {};
-  if (!imagePath) throw new Error("imagePath required");
-  if (!Array.isArray(profileIds) || !profileIds.length) throw new Error("Choose at least one account");
+app.post("/api/post", (req, res) => {
+  const { caption, imagePath, imageUrl, scheduledAt, profileIds } = req.body || {};
+  if (!imagePath) return res.status(400).json({ error: "imagePath required" });
+  if (!Array.isArray(profileIds) || !profileIds.length) return res.status(400).json({ error: "Choose at least one account" });
   const time = Number(scheduledAt);
-  if (!Number.isFinite(time)) throw new Error("Invalid scheduledAt");
+  if (!Number.isFinite(time)) return res.status(400).json({ error: "Invalid scheduledAt" });
 
+  const db = loadDB();
   const postId = id();
-  const post = {
+  db.posts.unshift({
     id: postId,
     caption: String(caption || ""),
     imagePath,
@@ -309,8 +329,7 @@ function createPostRecord(db, payload = {}) {
     status: "scheduled",
     createdAt: Date.now(),
     lastRunAt: null
-  };
-  db.posts.unshift(post);
+  });
 
   for (const profileId of profileIds) {
     db.targets.push({
@@ -324,44 +343,81 @@ function createPostRecord(db, payload = {}) {
     });
   }
 
-  return post;
-}
-
-app.post("/api/post", (req, res) => {
-  try {
-    const db = loadDB();
-    const post = createPostRecord(db, req.body || {});
-    saveDB(db);
-    log("info", "Scheduled post", { postId: post.id, profileCount: (req.body?.profileIds || []).length });
-    res.json({ ok: true, postId: post.id });
-  } catch (error) {
-    sendApiError(res, 400, error);
-  }
-});
-
-app.post("/api/posts/import", (req, res) => {
-  const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
-  if (!rows.length) return res.status(400).json({ error: "No rows to import" });
-
-  try {
-    const db = loadDB();
-    const postIds = [];
-    for (const row of rows) {
-      const post = createPostRecord(db, row);
-      postIds.push(post.id);
-    }
-    saveDB(db);
-    log("info", "Imported scheduled posts", { count: postIds.length });
-    res.json({ ok: true, count: postIds.length, postIds });
-  } catch (error) {
-    sendApiError(res, 400, error);
-  }
+  saveDB(db);
+  log("info", "Scheduled post", { postId, profileCount: profileIds.length });
+  res.json({ ok: true, postId });
 });
 
 app.post("/api/post/:id/post-now", async (req, res) => {
   const postId = req.params.id;
   const result = await processPost(postId, true);
   res.json(result);
+});
+
+app.post("/api/post/:id/toggle-pause", (req, res) => {
+  const postId = req.params.id;
+  const db = loadDB();
+  const post = findPost(db, postId);
+  if (!post) return res.status(404).json({ error: "Post not found" });
+  if (post.status === "running") return res.status(400).json({ error: "Post is running" });
+  if (post.status === "done") return res.status(400).json({ error: "Posted items cannot be paused" });
+  post.status = post.status === "paused" ? "scheduled" : "paused";
+  saveDB(db);
+  res.json({ ok: true, status: post.status });
+});
+
+app.post("/api/post/:id/update", (req, res) => {
+  const postId = req.params.id;
+  const { caption, scheduledAt, profileIds } = req.body || {};
+  const db = loadDB();
+  const post = findPost(db, postId);
+  if (!post) return res.status(404).json({ error: "Post not found" });
+  if (post.status === "running") return res.status(400).json({ error: "Post is currently running" });
+
+  const time = Number(scheduledAt);
+  if (!Number.isFinite(time)) return res.status(400).json({ error: "Invalid scheduledAt" });
+  if (!Array.isArray(profileIds) || !profileIds.length) return res.status(400).json({ error: "Choose at least one account" });
+
+  post.caption = String(caption || "");
+  post.scheduledAt = time;
+  if (post.status !== "done") {
+    post.status = "scheduled";
+  }
+
+  db.targets = db.targets.filter(t => !(t.postId === postId && (t.status === "pending" || t.status === "failed" || t.status === "running")));
+  for (const profileId of profileIds) {
+    db.targets.push({
+      id: id(),
+      postId,
+      profileId,
+      status: "pending",
+      error: "",
+      updatedAt: Date.now(),
+      attempts: 0,
+    });
+  }
+
+  saveDB(db);
+  res.json({ ok: true });
+});
+
+app.post("/api/posts/bulk-reschedule", (req, res) => {
+  const { postIds, minuteOffset } = req.body || {};
+  if (!Array.isArray(postIds) || !postIds.length) return res.status(400).json({ error: "Choose at least one post" });
+  const offset = Number(minuteOffset);
+  if (!Number.isFinite(offset)) return res.status(400).json({ error: "Invalid minute offset" });
+
+  const db = loadDB();
+  let changed = 0;
+  for (const postId of postIds) {
+    const post = findPost(db, postId);
+    if (!post || post.status === "running" || post.status === "done") continue;
+    post.scheduledAt = Number(post.scheduledAt || Date.now()) + offset * 60 * 1000;
+    if (post.status !== "paused") post.status = "scheduled";
+    changed += 1;
+  }
+  saveDB(db);
+  res.json({ ok: true, changed });
 });
 
 app.post("/api/target/:id/retry", (req, res) => {
@@ -372,6 +428,10 @@ app.post("/api/target/:id/retry", (req, res) => {
   t.status = "pending";
   t.error = "";
   t.updatedAt = Date.now();
+  const post = findPost(db, t.postId);
+  if (post && post.status !== "paused" && post.status !== "done") {
+    post.status = "partial";
+  }
   saveDB(db);
   log("info", "Reset target to pending", { targetId });
   res.json({ ok: true });
@@ -641,4 +701,8 @@ app.listen(PORT, HOST, () => {
     authEnabled: basicAuthEnabled(),
   });
   console.log(`http://${HOST === "0.0.0.0" ? "localhost" : HOST}:${PORT}`);
+  schedulerTick().catch(err => {
+    lastSchedulerError = err.message || String(err);
+    log("error", "Startup catch-up failed", { error: lastSchedulerError });
+  });
 });
