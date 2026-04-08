@@ -65,7 +65,7 @@
         </div>
 
         <div class="actions">
-          <button class="button button-primary" type="submit">Schedule post</button>
+          <button class="button button-primary" type="submit" id="scheduleSubmitBtn">Schedule post</button>
         </div>
       </form>
     </section>
@@ -112,6 +112,26 @@
       </div>
       <div class="actions">
         <button class="button button-primary" id="editSaveBtn">Save changes</button>
+      </div>
+    </div>
+  </div>
+
+
+  <div id="renameModal" class="modal hidden">
+    <div class="modal-card">
+      <div class="section-head">
+        <div>
+          <h2>Rename account</h2>
+          <p id="renameProfileId" class="muted"></p>
+        </div>
+        <button class="button ghost" data-close-modal="renameModal">Close</button>
+      </div>
+      <label class="field">
+        <span>Account name</span>
+        <input type="text" id="renameInput" maxlength="80" placeholder="Enter account name" />
+      </label>
+      <div class="actions">
+        <button class="button button-primary" id="renameSaveBtn">Save name</button>
       </div>
     </div>
   </div>
