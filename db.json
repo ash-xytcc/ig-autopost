@@ -587,6 +587,18 @@
   ],
   "logs": [
     {
+      "id": "z7urpzgdhu",
+      "ts": 1775680653688,
+      "level": "info",
+      "message": "Server started",
+      "extra": {
+        "url": "http://localhost:3000",
+        "dataDir": "C:\\Users\\bjgar\\Documents\\ig-autopost",
+        "authEnabled": false,
+        "flowVersion": "2026-04-08-c"
+      }
+    },
+    {
       "id": "9owu9ik9d7",
       "ts": 1775668387640,
       "level": "info",
@@ -3639,15 +3651,6 @@
       "extra": {
         "path": "uploads\\05b09651dbd5c86c74324dd0e88a763c",
         "original": "Screenshot 2026-04-06 103513.png"
-      }
-    },
-    {
-      "id": "iz7hdf70g5",
-      "ts": 1775532450204,
-      "level": "info",
-      "message": "Server started",
-      "extra": {
-        "url": "http://localhost:3000"
       }
     }
   ]

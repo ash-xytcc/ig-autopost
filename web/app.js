@@ -34,6 +34,9 @@ const els = {
   renameProfileId: document.getElementById("renameProfileId"),
   renameInput: document.getElementById("renameInput"),
   renameSaveBtn: document.getElementById("renameSaveBtn"),
+  bulkRescheduleModal: document.getElementById("bulkRescheduleModal"),
+  bulkRescheduleInput: document.getElementById("bulkRescheduleInput"),
+  bulkRescheduleSaveBtn: document.getElementById("bulkRescheduleSaveBtn"),
   scheduleSubmitBtn: document.getElementById("scheduleSubmitBtn"),
 };
 
@@ -269,7 +272,7 @@ async function addAccount() {
   }
 }
 
-async function renameAccount(id) {
+function renameAccount(id) {
   const current = state.profiles.find(p => p.id === id);
   if (!current) {
     showToast("Account not found.", "error");
@@ -369,7 +372,6 @@ async function saveEditModal() {
   await refreshState(true);
 }
 
-
 async function saveRenameModal() {
   const name = String(els.renameInput.value || "").trim();
   if (!renamingProfileId) {
@@ -400,22 +402,42 @@ async function saveRenameModal() {
   }
 }
 
-async function bulkReschedule() {
+function openBulkRescheduleModal() {
   if (!selectedPostIds.size) return;
-  const raw = prompt("Shift selected posts by how many minutes? Use negative numbers to move earlier.", "15");
-  if (raw === null) return;
-  const minuteOffset = Number(raw);
+  els.bulkRescheduleInput.value = "15";
+  openModal(els.bulkRescheduleModal);
+  setTimeout(() => {
+    els.bulkRescheduleInput.focus();
+    els.bulkRescheduleInput.select();
+  }, 0);
+}
+
+async function saveBulkRescheduleModal() {
+  const minuteOffset = Number(els.bulkRescheduleInput.value);
+  if (!selectedPostIds.size) {
+    showToast("No posts selected.", "error");
+    return;
+  }
   if (!Number.isFinite(minuteOffset)) {
     showToast("Enter a real number of minutes.", "error");
     return;
   }
-  const data = await apiFetch("/api/posts/bulk-reschedule", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ postIds: [...selectedPostIds], minuteOffset })
-  });
-  showToast(`Rescheduled ${data.changed} posts.`, "success");
-  await refreshState(true);
+
+  els.bulkRescheduleSaveBtn.disabled = true;
+  try {
+    const data = await apiFetch("/api/posts/bulk-reschedule", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ postIds: [...selectedPostIds], minuteOffset })
+    });
+    closeModal(els.bulkRescheduleModal);
+    showToast(`Rescheduled ${data.changed} posts.`, "success");
+    await refreshState(true);
+  } catch (error) {
+    showToast(error.message || "Could not bulk reschedule posts.", "error");
+  } finally {
+    els.bulkRescheduleSaveBtn.disabled = false;
+  }
 }
 
 function clearSelection() {
@@ -636,7 +658,8 @@ els.fileInput.addEventListener("change", () => {
   renderPreview();
 });
 els.captionInput.addEventListener("input", renderPreview);
-els.bulkRescheduleBtn.addEventListener("click", bulkReschedule);
+els.bulkRescheduleBtn.addEventListener("click", openBulkRescheduleModal);
+els.bulkRescheduleSaveBtn.addEventListener("click", saveBulkRescheduleModal);
 els.clearSelectionBtn.addEventListener("click", clearSelection);
 els.importOpenBtn.addEventListener("click", () => openModal(els.importModal));
 els.importRunBtn.addEventListener("click", importSchedule);
@@ -660,6 +683,20 @@ els.importCsvFile.addEventListener("change", async () => {
   const headers = matrix[0] ? matrix[0].map(x => String(x || "").trim()) : [];
   const rows = matrix.slice(1).map(values => Object.fromEntries(headers.map((header, index) => [header, String(values[index] || "").trim()])));
   summarizeImportRows(rows);
+});
+
+els.renameInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    saveRenameModal();
+  }
+});
+
+els.bulkRescheduleInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    saveBulkRescheduleModal();
+  }
 });
 
 document.body.addEventListener("click", async (event) => {

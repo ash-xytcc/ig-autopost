@@ -112,7 +112,6 @@ h1 { font-size: 34px; }
 }
 input[type="file"],
 input[type="datetime-local"],
-input[type="text"],
 textarea {
   width: 100%;
   border-radius: 12px;
