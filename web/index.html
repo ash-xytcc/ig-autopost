@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>IG Autopost</title>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=renamefix2" />
 </head>
 <body>
   <div class="shell">
@@ -116,7 +116,6 @@
     </div>
   </div>
 
-
   <div id="renameModal" class="modal hidden">
     <div class="modal-card">
       <div class="section-head">
@@ -136,25 +135,24 @@
     </div>
   </div>
 
-
-<div id="bulkRescheduleModal" class="modal hidden">
-  <div class="modal-card">
-    <div class="section-head">
-      <div>
-        <h2>Bulk reschedule</h2>
-        <p class="muted">Shift all selected posts by minutes. Use negative numbers to move earlier.</p>
+  <div id="bulkModal" class="modal hidden">
+    <div class="modal-card">
+      <div class="section-head">
+        <div>
+          <h2>Bulk reschedule</h2>
+          <p class="muted">Shift all selected posts by a number of minutes. Use a negative number to move them earlier.</p>
+        </div>
+        <button class="button ghost" data-close-modal="bulkModal">Close</button>
       </div>
-      <button class="button ghost" data-close-modal="bulkRescheduleModal">Close</button>
-    </div>
-    <label class="field">
-      <span>Minute offset</span>
-      <input type="number" id="bulkMinuteOffsetInput" step="1" placeholder="15" />
-    </label>
-    <div class="actions">
-      <button class="button button-primary" id="bulkRescheduleSaveBtn">Apply shift</button>
+      <label class="field">
+        <span>Minute shift</span>
+        <input type="number" id="bulkMinutesInput" step="1" value="15" />
+      </label>
+      <div class="actions">
+        <button class="button button-primary" id="bulkApplyBtn">Apply shift</button>
+      </div>
     </div>
   </div>
-</div>
 
   <div id="importModal" class="modal hidden">
     <div class="modal-card modal-card-wide">
@@ -192,6 +190,6 @@
     </div>
   </div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=renamefix2"></script>
 </body>
 </html>

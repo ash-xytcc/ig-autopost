@@ -30,6 +30,14 @@ const els = {
   editTimeInput: document.getElementById("editTimeInput"),
   editAccountsWrap: document.getElementById("editAccountsWrap"),
   editSaveBtn: document.getElementById("editSaveBtn"),
+  renameModal: document.getElementById("renameModal"),
+  renameProfileId: document.getElementById("renameProfileId"),
+  renameInput: document.getElementById("renameInput"),
+  renameSaveBtn: document.getElementById("renameSaveBtn"),
+  bulkModal: document.getElementById("bulkModal"),
+  bulkMinutesInput: document.getElementById("bulkMinutesInput"),
+  bulkApplyBtn: document.getElementById("bulkApplyBtn"),
+  scheduleSubmitBtn: document.getElementById("scheduleSubmitBtn"),
 };
 
 let state = { profiles: [], posts: [], targets: [] };
@@ -37,6 +45,7 @@ let selectedImage = null;
 let lastApiFailure = "";
 let selectedPostIds = new Set();
 let editingPostId = "";
+let renamingProfileId = "";
 
 async function apiFetch(url, options = {}) {
   const res = await fetch(url, options);
@@ -263,17 +272,70 @@ async function addAccount() {
   }
 }
 
+function openModal(modal) {
+  if (!modal) return;
+  modal.classList.remove("hidden");
+}
+
+function closeModal(modal) {
+  if (!modal) return;
+  modal.classList.add("hidden");
+  if (modal === els.renameModal) {
+    renamingProfileId = "";
+  }
+}
+
+function selectedIdsFrom(name) {
+  return [...document.querySelectorAll(`input[name="${name}"]:checked`)].map(el => el.value);
+}
+
 async function renameAccount(id) {
   const current = state.profiles.find(p => p.id === id);
-  const name = prompt("Account name", current?.name || "");
-  if (!name) return;
+  if (!current) {
+    showToast("Account not found.", "error");
+    return;
+  }
 
-  await apiFetch("/api/profile/rename", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id, name })
-  });
-  await refreshState(true);
+  if (!els.renameModal || !els.renameProfileId || !els.renameInput || !els.renameSaveBtn) {
+    showToast("Rename dialog is missing from this build.", "error");
+    return;
+  }
+
+  renamingProfileId = id;
+  els.renameProfileId.textContent = id;
+  els.renameInput.value = current.name || "";
+  openModal(els.renameModal);
+  setTimeout(() => els.renameInput.focus(), 0);
+}
+
+async function saveRenameModal() {
+  const name = String(els.renameInput?.value || "").trim();
+  if (!renamingProfileId) {
+    showToast("No account selected.", "error");
+    return;
+  }
+  if (!name) {
+    showToast("Enter an account name.", "error");
+    return;
+  }
+
+  els.renameSaveBtn.disabled = true;
+  try {
+    await apiFetch("/api/profile/rename", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: renamingProfileId, name })
+    });
+
+    closeModal(els.renameModal);
+    renamingProfileId = "";
+    showToast("Account renamed.", "success");
+    await refreshState(true);
+  } catch (error) {
+    showToast(error.message || "Could not rename account.", "error");
+  } finally {
+    els.renameSaveBtn.disabled = false;
+  }
 }
 
 async function removeAccount(id) {
@@ -305,18 +367,6 @@ async function togglePause(postId) {
   const data = await apiFetch(`/api/post/${postId}/toggle-pause`, { method: "POST" });
   showToast(data.status === "paused" ? "Post paused." : "Post resumed.", "success");
   await refreshState(true);
-}
-
-function openModal(modal) {
-  modal.classList.remove("hidden");
-}
-
-function closeModal(modal) {
-  modal.classList.add("hidden");
-}
-
-function selectedIdsFrom(name) {
-  return [...document.querySelectorAll(`input[name="${name}"]:checked`)].map(el => el.value);
 }
 
 function openEditModal(postId) {
@@ -360,23 +410,21 @@ async function saveEditModal() {
   await refreshState(true);
 }
 
-
-async function bulkReschedule() {
+function openBulkModal() {
   if (!selectedPostIds.size) return;
-  if (!els.bulkRescheduleModal || !els.bulkMinuteOffsetInput) {
-    showToast("Bulk reschedule modal is missing from the page.", "error");
+  if (!els.bulkModal || !els.bulkMinutesInput || !els.bulkApplyBtn) {
+    showToast("Bulk reschedule dialog is missing from this build.", "error");
     return;
   }
-  els.bulkMinuteOffsetInput.value = "15";
-  openModal(els.bulkRescheduleModal);
-  setTimeout(() => els.bulkMinuteOffsetInput.focus(), 0);
+  els.bulkMinutesInput.value = "15";
+  openModal(els.bulkModal);
+  setTimeout(() => els.bulkMinutesInput.focus(), 0);
 }
 
-async function saveBulkRescheduleModal() {
-  const raw = String(els.bulkMinuteOffsetInput?.value || "").trim();
-  const minuteOffset = Number(raw);
+async function applyBulkReschedule() {
+  const minuteOffset = Number(els.bulkMinutesInput?.value);
   if (!selectedPostIds.size) {
-    showToast("No posts selected.", "error");
+    closeModal(els.bulkModal);
     return;
   }
   if (!Number.isFinite(minuteOffset)) {
@@ -384,20 +432,20 @@ async function saveBulkRescheduleModal() {
     return;
   }
 
-  els.bulkRescheduleSaveBtn.disabled = true;
+  els.bulkApplyBtn.disabled = true;
   try {
     const data = await apiFetch("/api/posts/bulk-reschedule", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ postIds: [...selectedPostIds], minuteOffset })
     });
-    closeModal(els.bulkRescheduleModal);
+    closeModal(els.bulkModal);
     showToast(`Rescheduled ${data.changed} posts.`, "success");
     await refreshState(true);
   } catch (error) {
-    showToast(error.message || "Bulk reschedule failed.", "error");
+    showToast(error.message || "Could not reschedule posts.", "error");
   } finally {
-    els.bulkRescheduleSaveBtn.disabled = false;
+    els.bulkApplyBtn.disabled = false;
   }
 }
 
@@ -572,34 +620,42 @@ async function schedulePost(event) {
     return;
   }
 
-  const fd = new FormData();
-  fd.append("file", els.fileInput.files[0]);
-  const upload = await apiFetch("/api/upload", { method: "POST", body: fd });
-
   const when = new Date(els.timeInput.value).getTime();
   if (!Number.isFinite(when)) {
     showToast("Pick a valid time.", "error");
     return;
   }
 
-  await apiFetch("/api/post", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      caption: els.captionInput.value,
-      imagePath: upload.path,
-      imageUrl: upload.url,
-      scheduledAt: when,
-      profileIds: selectedProfiles
-    })
-  });
+  els.scheduleSubmitBtn.disabled = true;
 
-  showToast("Post scheduled.", "success");
-  els.postForm.reset();
-  els.timeInput.value = defaultDateTimeLocal();
-  selectedImage = null;
-  renderPreview();
-  await refreshState();
+  try {
+    const fd = new FormData();
+    fd.append("file", els.fileInput.files[0]);
+    const upload = await apiFetch("/api/upload", { method: "POST", body: fd });
+
+    await apiFetch("/api/post", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        caption: els.captionInput.value,
+        imagePath: upload.path,
+        imageUrl: upload.url,
+        scheduledAt: when,
+        profileIds: selectedProfiles
+      })
+    });
+
+    showToast("Post scheduled.", "success");
+    els.postForm.reset();
+    els.timeInput.value = defaultDateTimeLocal();
+    selectedImage = null;
+    renderPreview();
+    await refreshState(true);
+  } catch (error) {
+    showToast(error.message || "Could not schedule post.", "error");
+  } finally {
+    els.scheduleSubmitBtn.disabled = false;
+  }
 }
 
 els.addAccountBtn.addEventListener("click", addAccount);
@@ -611,11 +667,14 @@ els.fileInput.addEventListener("change", () => {
   renderPreview();
 });
 els.captionInput.addEventListener("input", renderPreview);
-els.bulkRescheduleBtn.addEventListener("click", bulkReschedule);
+els.bulkRescheduleBtn.addEventListener("click", openBulkModal);
 els.clearSelectionBtn.addEventListener("click", clearSelection);
 els.importOpenBtn.addEventListener("click", () => openModal(els.importModal));
 els.importRunBtn.addEventListener("click", importSchedule);
 els.editSaveBtn.addEventListener("click", saveEditModal);
+els.renameSaveBtn?.addEventListener("click", saveRenameModal);
+els.bulkApplyBtn?.addEventListener("click", applyBulkReschedule);
+
 els.importCsvText.addEventListener("input", () => {
   try {
     const matrix = parseCsv(els.importCsvText.value);
@@ -680,21 +739,3 @@ updateSelectedCount();
 summarizeImportRows([]);
 refreshState(true).catch(() => {});
 setInterval(() => refreshState(false).catch(() => {}), 10000);
-
-
-if (els.renameInput) {
-  els.renameInput.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      saveRenameModal();
-    }
-  });
-}
-if (els.bulkMinuteOffsetInput) {
-  els.bulkMinuteOffsetInput.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      saveBulkRescheduleModal();
-    }
-  });
-}
