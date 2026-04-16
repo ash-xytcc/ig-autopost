@@ -1081,7 +1081,7 @@ async function processPost(postId, manual = false) {
   const db = loadDB();
   const post = db.posts.find(p => p.id === postId);
   if (!post) return { ok: false, error: "Post not found" };
-  if (!manual && post.status !== "scheduled" && post.status !== "partial") {
+  if (!manual && post.status !== "scheduled") {
     return { ok: false, error: "Post is not runnable" };
   }
 
@@ -1161,7 +1161,7 @@ async function schedulerTick() {
   try {
     const db = loadDB();
     const now = Date.now();
-    const due = db.posts.filter(p => (p.status === "scheduled" || p.status === "partial") && Number(p.scheduledAt) <= now);
+    const due = db.posts.filter(p => p.status === "scheduled" && Number(p.scheduledAt) <= now);
     for (const post of due) {
       await processPost(post.id, false);
     }
