@@ -1,3 +1,4 @@
+const { loadDB, saveDB } = require('./lib/db');
 const express = require("express");
 const multer = require("multer");
 const fs = require("fs");
@@ -1203,3 +1204,14 @@ app.listen(PORT, HOST, () => {
   });
   console.log(`http://${HOST === "0.0.0.0" ? "localhost" : HOST}:${PORT}`);
 });
+
+
+// --- autosave ---
+setInterval(() => {
+  try {
+    saveDB(db);
+    console.log("Auto-saved DB");
+  } catch (e) {
+    console.error("Auto-save failed", e);
+  }
+}, 10000);
