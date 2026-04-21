@@ -142,37 +142,14 @@ let schedulerBusy = false;
 let lastSchedulerTickAt = null;
 let lastSchedulerError = "";
 
-function createDefaultDb() {
-  return { profiles: [], posts: [], targets: [], logs: [] };
-}
+let db = loadDB();
 
-function loadDB() {
-  if (!fs.existsSync(DB_FILE)) {
-    fs.writeFileSync(DB_FILE, JSON.stringify(createDefaultDb(), null, 2));
-  }
-  try {
-    const parsed = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
-    return {
-      profiles: parsed.profiles || [],
-      posts: parsed.posts || [],
-      targets: parsed.targets || [],
-      logs: parsed.logs || [],
-    };
-  } catch {
-    return createDefaultDb();
-  }
-}
-
-function saveDB(data) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
-}
 
 function id() {
   return Math.random().toString(36).slice(2, 12);
 }
 
 function log(level, message, extra = {}) {
-  const db = loadDB();
   db.logs.unshift({
     id: id(),
     ts: Date.now(),
@@ -297,7 +274,7 @@ app.get("/api/startup-checks", (req, res) => {
 });
 
 app.get("/api/state", (req, res) => {
-  const db = loadDB();
+  db = loadDB();
   db.profiles = db.profiles.map((profile, index) => normalizeProfile(profile, index));
   saveDB(db);
   res.json(db);
@@ -1180,6 +1157,16 @@ app.use((err, req, res, next) => {
   sendApiError(res, 500, err);
 });
 
+
+setInterval(() => {
+  try {
+    saveDB(db);
+    console.log("Auto-saved DB");
+  } catch (e) {
+    console.error("Auto-save failed", e);
+  }
+}, 10000);
+
 setInterval(() => {
   schedulerTick().catch(err => {
     lastSchedulerError = err.message || String(err);
@@ -1205,13 +1192,3 @@ app.listen(PORT, HOST, () => {
   console.log(`http://${HOST === "0.0.0.0" ? "localhost" : HOST}:${PORT}`);
 });
 
-
-// --- autosave ---
-setInterval(() => {
-  try {
-    saveDB(db);
-    console.log("Auto-saved DB");
-  } catch (e) {
-    console.error("Auto-save failed", e);
-  }
-}, 10000);
