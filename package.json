@@ -60,6 +60,12 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "shortcutName": "IG Autopost"
-    }
+    },
+    "asarUnpack": [
+      "server.js",
+      "lib/**/*",
+      "node_modules/**/*",
+      "web/**/*"
+    ]
   }
 }
