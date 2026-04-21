@@ -142,7 +142,6 @@ let schedulerBusy = false;
 let lastSchedulerTickAt = null;
 let lastSchedulerError = "";
 
-let db = loadDB();
 
 function getDB() {
   return db;
@@ -150,7 +149,7 @@ function getDB() {
 
 function commitDB(nextDb) {
   db = nextDb;
-  commitDB(currentDb);
+  saveDB(db);
   return db;
 }
 
@@ -160,6 +159,7 @@ function id() {
 }
 
 function log(level, message, extra = {}) {
+  const db = loadDB();
   db.logs.unshift({
     id: id(),
     ts: Date.now(),
@@ -168,7 +168,7 @@ function log(level, message, extra = {}) {
     extra,
   });
   db.logs = db.logs.slice(0, 300);
-  commitDB(currentDb);
+  saveDB(db);
   console.log(`[${level}] ${message}`, extra);
 }
 
@@ -208,21 +208,21 @@ async function finalizeProfileSetup(profileId, outcome = {}) {
   active.finished = true;
   cleanupProfileSetup(profileId);
 
-  const currentDb = getDB();
-  const profile = findProfile(currentDb, profileId);
+  const db = loadDB();
+  const profile = findProfile(db, profileId);
   if (!profile) return;
 
   if (outcome.connected) {
     profile.pending = false;
     profile.connectedAt = Date.now();
-    commitDB(currentDb);
+    saveDB(db);
     log("info", "Instagram account connected", { profileId });
     return;
   }
 
-  currentDb.profiles = currentDb.profiles.filter(x => x.id !== profileId);
-  currentDb.targets = currentDb.targets.filter(t => t.profileId !== profileId);
-  commitDB(currentDb);
+  db.profiles = db.profiles.filter(x => x.id !== profileId);
+  db.targets = db.targets.filter(t => t.profileId !== profileId);
+  saveDB(db);
   log(outcome.error ? "error" : "info", outcome.error || "Instagram account setup cancelled", { profileId });
 }
 
@@ -284,25 +284,25 @@ app.get("/api/startup-checks", (req, res) => {
 });
 
 app.get("/api/state", (req, res) => {
-  db = loadDB();
+  const db = loadDB();
   db.profiles = db.profiles.map((profile, index) => normalizeProfile(profile, index));
-  commitDB(db);
+  saveDB(db);
   res.json(db);
 });
 
 app.post("/api/profile/start", async (req, res) => {
-  const currentDb = getDB();
+  const db = loadDB();
   const profileId = id();
   const profilePath = path.join(PROFILES_DIR, profileId);
 
-  currentDb.profiles.push(normalizeProfile({
+  db.profiles.push(normalizeProfile({
     id: profileId,
-    name: `Account ${currentDb.profiles.length + 1}`,
+    name: `Account ${db.profiles.length + 1}`,
     createdAt: Date.now(),
     pending: true,
     connectedAt: null,
-  }, currentDb.profiles.length));
-  commitDB(currentDb);
+  }, db.profiles.length));
+  saveDB(db);
 
   try {
     const browser = await chromium.launchPersistentContext(profilePath, {
@@ -338,11 +338,11 @@ app.post("/api/profile/start", async (req, res) => {
 
 app.post("/api/profile/rename", (req, res) => {
   const { id: profileId, name } = req.body || {};
-  const currentDb = getDB();
-  const p = currentDb.profiles.find(x => x.id === profileId);
+  const db = loadDB();
+  const p = db.profiles.find(x => x.id === profileId);
   if (!p) return res.status(404).json({ error: "Profile not found" });
   p.name = String(name || "").trim() || p.name;
-  commitDB(currentDb);
+  saveDB(db);
   res.json({ ok: true });
 });
 
@@ -351,7 +351,7 @@ app.delete("/api/profile/:id", (req, res) => {
   const db = loadDB();
   db.profiles = db.profiles.filter(p => p.id !== profileId);
   db.targets = db.targets.filter(t => t.profileId !== profileId);
-  commitDB(currentDb);
+  saveDB(db);
   res.json({ ok: true });
 });
 
@@ -385,7 +385,7 @@ function createPostRecord(db, row) {
   });
 
   for (const profileId of row.profileIds) {
-    currentDb.targets.push({
+    db.targets.push({
       id: id(),
       postId,
       profileId,
@@ -403,7 +403,7 @@ app.post("/api/post", (req, res) => {
   try {
     const db = loadDB();
     const postId = createPostRecord(db, req.body || {});
-    commitDB(currentDb);
+    saveDB(db);
     log("info", "Scheduled post", { postId, profileCount: (req.body?.profileIds || []).length });
     res.json({ ok: true, postId });
   } catch (error) {
@@ -416,13 +416,13 @@ app.post("/api/posts/import", (req, res) => {
   if (!rows.length) return res.status(400).json({ error: "No rows to import" });
 
   try {
-    const currentDb = getDB();
+    const db = loadDB();
     const postIds = [];
     for (const row of rows) {
-      const postId = createPostRecord(currentDb, row);
+      const postId = createPostRecord(db, row);
       postIds.push(postId);
     }
-    commitDB(currentDb);
+    saveDB(db);
     log("info", "Imported scheduled posts", { count: postIds.length });
     res.json({ ok: true, count: postIds.length, postIds });
   } catch (error) {
@@ -438,21 +438,21 @@ app.post("/api/post/:id/post-now", async (req, res) => {
 
 app.post("/api/post/:id/toggle-pause", (req, res) => {
   const postId = req.params.id;
-  const currentDb = getDB();
-  const post = findPost(currentDb, postId);
+  const db = loadDB();
+  const post = findPost(db, postId);
   if (!post) return res.status(404).json({ error: "Post not found" });
   if (post.status === "running") return res.status(400).json({ error: "Post is running" });
   if (post.status === "done") return res.status(400).json({ error: "Posted items cannot be paused" });
   post.status = post.status === "paused" ? "scheduled" : "paused";
-  commitDB(currentDb);
+  saveDB(db);
   res.json({ ok: true, status: post.status });
 });
 
 app.post("/api/post/:id/update", (req, res) => {
   const postId = req.params.id;
   const { caption, scheduledAt, profileIds } = req.body || {};
-  const currentDb = getDB();
-  const post = findPost(currentDb, postId);
+  const db = loadDB();
+  const post = findPost(db, postId);
   if (!post) return res.status(404).json({ error: "Post not found" });
   if (post.status === "running") return res.status(400).json({ error: "Post is currently running" });
 
@@ -464,9 +464,9 @@ app.post("/api/post/:id/update", (req, res) => {
   post.scheduledAt = time;
   if (post.status !== "done") post.status = "scheduled";
 
-  currentDb.targets = currentDb.targets.filter(t => !(t.postId === postId && (t.status === "pending" || t.status === "failed" || t.status === "running")));
+  db.targets = db.targets.filter(t => !(t.postId === postId && (t.status === "pending" || t.status === "failed" || t.status === "running")));
   for (const profileId of profileIds) {
-    currentDb.targets.push({
+    db.targets.push({
       id: id(),
       postId,
       profileId,
@@ -477,7 +477,7 @@ app.post("/api/post/:id/update", (req, res) => {
     });
   }
 
-  commitDB(currentDb);
+  saveDB(db);
   res.json({ ok: true });
 });
 
@@ -487,28 +487,28 @@ app.post("/api/posts/bulk-reschedule", (req, res) => {
   if (!postIds.length) return res.status(400).json({ error: "Choose at least one post" });
   if (!Number.isFinite(minuteOffset)) return res.status(400).json({ error: "Invalid minuteOffset" });
 
-  const currentDb = getDB();
+  const db = loadDB();
   let changed = 0;
   for (const postId of postIds) {
-    const post = findPost(currentDb, postId);
+    const post = findPost(db, postId);
     if (!post || post.status === "running" || post.status === "done") continue;
     post.scheduledAt = Number(post.scheduledAt) + minuteOffset * 60 * 1000;
     post.status = "scheduled";
     changed += 1;
   }
-  commitDB(currentDb);
+  saveDB(db);
   res.json({ ok: true, changed });
 });
 
 app.post("/api/target/:id/retry", (req, res) => {
   const targetId = req.params.id;
-  const currentDb = getDB();
-  const t = currentDb.targets.find(x => x.id === targetId);
+  const db = loadDB();
+  const t = db.targets.find(x => x.id === targetId);
   if (!t) return res.status(404).json({ error: "Target not found" });
   t.status = "pending";
   t.error = "";
   t.updatedAt = Date.now();
-  commitDB(currentDb);
+  saveDB(db);
   log("info", "Reset target to pending", { targetId });
   res.json({ ok: true });
 });
@@ -518,7 +518,7 @@ app.post("/api/post/:id/delete", (req, res) => {
   const db = loadDB();
   db.posts = db.posts.filter(p => p.id !== postId);
   db.targets = db.targets.filter(t => t.postId !== postId);
-  commitDB(currentDb);
+  saveDB(db);
   res.json({ ok: true });
 });
 
@@ -910,6 +910,22 @@ async function advanceToDetails(page, screenshotBase, debugMode) {
   return true;
 }
 
+
+async function waitForShareSuccess(page, timeoutMs = 45000) {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const url = page.url();
+    if (url.includes("/accounts/activity/") || url.includes("/")) {
+      const shareVisible = await page.getByRole("button", { name: "Share", exact: true }).count().catch(() => 0);
+      const doneVisible = await page.getByText("Your post has been shared.").count().catch(() => 0);
+      const processingVisible = await page.getByText("Your reel has been shared.").count().catch(() => 0);
+      if (doneVisible || processingVisible || !shareVisible) return true;
+    }
+    await page.waitForTimeout(1000);
+  }
+  return false;
+}
+
 async function postToInstagram(target, post, profile) {
   const profilePath = path.join(PROFILES_DIR, profile.id);
   const browser = await chromium.launchPersistentContext(profilePath, {
@@ -1013,8 +1029,8 @@ app.post("/api/profile/:id/self-test", async (req, res) => {
   const imagePath = String(req.body?.imagePath || "").trim();
   const caption = String(req.body?.caption || "self test");
   const useRelativeImagePath = imagePath || storageRelativePath("uploads", "");
-  const currentDb = getDB();
-  const profile = currentDb.profiles.find(x => x.id === profileId);
+  const db = loadDB();
+  const profile = db.profiles.find(x => x.id === profileId);
   if (!profile) return res.status(404).json({ error: "Profile not found" });
   if (!imagePath) return res.status(400).json({ error: "imagePath required" });
 
@@ -1066,7 +1082,7 @@ app.post("/api/profile/:id/self-test", async (req, res) => {
 });
 
 async function processPost(postId, manual = false) {
-  db = loadDB();
+  const db = loadDB();
   const post = db.posts.find(p => p.id === postId);
   if (!post) return { ok: false, error: "Post not found" };
   if (!manual && post.status !== "scheduled") {
@@ -1078,7 +1094,7 @@ async function processPost(postId, manual = false) {
 
   post.status = "running";
   post.lastRunAt = Date.now();
-  commitDB(currentDb);
+  saveDB(db);
 
   log("info", "Running post", { postId, targetCount: targets.length, manual, flowVersion: IG_FLOW_VERSION });
 
@@ -1086,8 +1102,7 @@ async function processPost(postId, manual = false) {
   let failedCount = 0;
 
   for (const target of targets) {
-    db = loadDB();
-    const freshDb = db;
+    const freshDb = loadDB();
     const liveTarget = freshDb.targets.find(t => t.id === target.id);
     const profile = freshDb.profiles.find(p => p.id === target.profileId);
     const livePost = freshDb.posts.find(p => p.id === postId);
@@ -1097,14 +1112,13 @@ async function processPost(postId, manual = false) {
     liveTarget.status = "running";
     liveTarget.updatedAt = Date.now();
     liveTarget.attempts = Number(liveTarget.attempts || 0) + 1;
-    commitDB(freshDb);
+    saveDB(freshDb);
 
     log("info", "Posting to account", { postId, profileId: profile.id, profileName: profile.name });
 
     const result = await postToInstagram(liveTarget, livePost, profile);
 
-    db = loadDB();
-    const postDb = db;
+    const postDb = loadDB();
     const finalTarget = postDb.targets.find(t => t.id === target.id);
     if (!finalTarget) continue;
 
@@ -1125,11 +1139,10 @@ async function processPost(postId, manual = false) {
     if (livePost2) {
       livePost2.status = failedCount ? "partial" : "running";
     }
-    commitDB(postDb);
+    saveDB(postDb);
   }
 
-  db = loadDB();
-  const endDb = db;
+  const endDb = loadDB();
   const endPost = endDb.posts.find(p => p.id === postId);
   const remaining = endDb.targets.filter(t => t.postId === postId && (t.status === "pending" || t.status === "running")).length;
   if (endPost) {
@@ -1140,7 +1153,7 @@ async function processPost(postId, manual = false) {
       endPost.status = anyFailed ? "partial" : "done";
     }
   }
-  commitDB(endDb);
+  saveDB(endDb);
 
   return { ok: true, doneCount, failedCount };
 }
@@ -1171,14 +1184,6 @@ app.use((err, req, res, next) => {
 });
 
 
-setInterval(() => {
-  try {
-    commitDB(currentDb);
-    console.log("Auto-saved DB");
-  } catch (e) {
-    console.error("Auto-save failed", e);
-  }
-}, 10000);
 
 setInterval(() => {
   schedulerTick().catch(err => {
